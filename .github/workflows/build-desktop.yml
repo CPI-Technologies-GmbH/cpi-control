@@ -77,7 +77,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_SIGNING_IDENTITY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.APPLE_SIGNING_IDENTITY || '-' }}
           APPLE_ID: ${{ startsWith(github.ref, 'refs/tags/') && secrets.APPLE_ID || '' }}
           APPLE_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/') && secrets.APPLE_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ startsWith(github.ref, 'refs/tags/') && secrets.APPLE_TEAM_ID || '' }}
