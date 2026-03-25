@@ -1,0 +1,43 @@
+[Unit]
+Description=OpsBoard Monitoring Agent
+Documentation=https://github.com/cpi-control/opsboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opsboard-agent
+Group=opsboard-agent
+ExecStart=/usr/local/bin/opsboard-agent
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Environment
+Environment=CONFIG_PATH=/etc/opsboard-agent/config.json
+Environment=EVENTS_DIR=/var/lib/opsboard-agent/events
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/var/lib/opsboard-agent
+ReadOnlyPaths=/etc/opsboard-agent
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=opsboard-agent
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=256M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

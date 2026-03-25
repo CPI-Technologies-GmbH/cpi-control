@@ -1,0 +1,19 @@
+{
+  "name": "opsboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "dev:backend": "pnpm --filter @opsboard/backend dev",
+    "dev:desktop": "pnpm --filter @opsboard/desktop dev",
+    "build:backend": "pnpm --filter @opsboard/backend build",
+    "build:desktop": "pnpm --filter @opsboard/desktop build"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0"
+  }
+}
