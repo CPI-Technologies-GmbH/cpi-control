@@ -15,7 +15,7 @@ export interface CreateNotificationRuleBody {
   channelConfig?: Record<string, unknown>;
   cooldownMinutes?: number;
   serviceFilter?: string[];
-  customerFilter?: string[];
+  projectFilter?: string[];
   metadata?: Record<string, unknown>;
 }
 
@@ -28,7 +28,7 @@ export interface UpdateNotificationRuleBody {
   channelConfig?: Record<string, unknown>;
   cooldownMinutes?: number;
   serviceFilter?: string[];
-  customerFilter?: string[];
+  projectFilter?: string[];
   metadata?: Record<string, unknown>;
 }
 
@@ -57,7 +57,7 @@ export async function createRule(db: DB, body: CreateNotificationRuleBody) {
       channelConfig: body.channelConfig || null,
       cooldownMinutes: body.cooldownMinutes ?? 15,
       websiteFilter: body.serviceFilter || null,
-      customerFilter: body.customerFilter || null,
+      projectFilter: body.projectFilter || null,
       metadata: body.metadata || null,
       createdAt: now,
       updatedAt: now,
@@ -81,7 +81,7 @@ export async function updateRule(db: DB, id: string, body: UpdateNotificationRul
       ...(body.channelConfig !== undefined && { channelConfig: body.channelConfig }),
       ...(body.cooldownMinutes !== undefined && { cooldownMinutes: body.cooldownMinutes }),
       ...(body.serviceFilter !== undefined && { websiteFilter: body.serviceFilter }),
-      ...(body.customerFilter !== undefined && { customerFilter: body.customerFilter }),
+      ...(body.projectFilter !== undefined && { projectFilter: body.projectFilter }),
       ...(body.metadata !== undefined && { metadata: body.metadata }),
       updatedAt: now,
     })
@@ -155,10 +155,10 @@ export class NotificationService {
         }
       }
 
-      // Check customer filter
-      if (rule.customerFilter && details.customerId) {
-        const filter = rule.customerFilter as string[];
-        if (filter.length > 0 && !filter.includes(details.customerId as string)) {
+      // Check project filter
+      if (rule.projectFilter && details.projectId) {
+        const filter = rule.projectFilter as string[];
+        if (filter.length > 0 && !filter.includes(details.projectId as string)) {
           skipped++;
           continue;
         }

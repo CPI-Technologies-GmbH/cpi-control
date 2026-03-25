@@ -1,5 +1,6 @@
 import type {
-  Customer,
+  Project,
+  ProjectStats,
   Service,
   ServiceFilters,
   MonitoringTarget,
@@ -63,19 +64,21 @@ function buildQuery(params: Record<string, any>): string {
   return qs ? `?${qs}` : '';
 }
 
-// ─── Customers ─────────────────────────────────────────────────────────────
+// ─── Projects ──────────────────────────────────────────────────────────────
 // Backend: inventoryRoutes registered with prefix '/api/inventory'
-// Routes: /customers, /customers/:id
+// Routes: /projects, /projects/:id
 
-export const customers = {
-  list: () => request<Customer[]>('/api/inventory/customers'),
-  get: (id: string) => request<Customer>(`/api/inventory/customers/${id}`),
-  create: (data: Partial<Customer>) =>
-    request<Customer>('/api/inventory/customers', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: Partial<Customer>) =>
-    request<Customer>(`/api/inventory/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+export const projects = {
+  list: () => request<Project[]>('/api/inventory/projects'),
+  get: (id: string) => request<Project>(`/api/inventory/projects/${id}`),
+  create: (data: Partial<Project>) =>
+    request<Project>('/api/inventory/projects', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Project>) =>
+    request<Project>(`/api/inventory/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) =>
-    request<void>(`/api/inventory/customers/${id}`, { method: 'DELETE' }),
+    request<void>(`/api/inventory/projects/${id}`, { method: 'DELETE' }),
+  stats: (id: string) =>
+    request<ProjectStats>(`/api/inventory/projects/${id}/stats`),
 };
 
 // ─── Services ──────────────────────────────────────────────────────────────

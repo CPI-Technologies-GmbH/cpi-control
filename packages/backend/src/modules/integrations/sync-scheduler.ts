@@ -5,7 +5,7 @@ import type { ProviderAdapter, SyncOptions, SyncResult } from '../../shared/prov
 import type { SecretStore } from '../secrets/keychain.js';
 import * as integrationService from './service.js';
 import {
-  customers,
+  projects,
   deploymentRecords,
   deploymentSources,
   infrastructureBindings,
@@ -494,9 +494,9 @@ export class SyncScheduler {
   private autoDiscoverServices(deployments: SyncedDeployment[], provider: string, result?: SyncResult): void {
     const now = new Date().toISOString();
 
-    // Get a default customer (first available, or null)
-    const allCustomers = this.db.select().from(customers).all();
-    const defaultCustomerId = allCustomers.length > 0 ? allCustomers[0].id : null;
+    // Get a default project (first available, or null)
+    const allProjects = this.db.select().from(projects).all();
+    const defaultProjectId = allProjects.length > 0 ? allProjects[0].id : null;
 
     // Group deployments by project, collecting all workflow names and URLs
     interface ProjectInfo {
@@ -509,7 +509,7 @@ export class SyncScheduler {
       hasIngress?: boolean;
       ingressHosts?: string[];
     }
-    const projects = new Map<string, ProjectInfo>();
+    const discoveredProjects = new Map<string, ProjectInfo>();
 
     // For Kubernetes: use k8sServices + k8sIngresses as primary discovery source when available
     if (provider === 'kubernetes' && result?.data?.k8sServices?.length) {
@@ -569,7 +569,7 @@ export class SyncScheduler {
         const url = ingress?.hosts[0] ? `https://${ingress.hosts[0]}` : undefined;
 
         const projectKey = `k8s:${svc.namespace}/${svc.name}`;
-        projects.set(projectKey, {
+        discoveredProjects.set(projectKey, {
           name: svc.name,
           environment: svc.namespace === 'production' ? 'production' : svc.namespace,
           urls: url ? [url] : [],
@@ -591,7 +591,7 @@ export class SyncScheduler {
       // Vercel: use vercelProjects as primary discovery source (covers all projects, not just those with recent deployments)
       for (const vp of result.data.vercelProjects) {
         const projectKey = `vercel:${vp.name}`;
-        projects.set(projectKey, {
+        discoveredProjects.set(projectKey, {
           name: vp.name,
           environment: 'production',
           urls: vp.productionUrl ? [vp.productionUrl] : [],
@@ -610,7 +610,7 @@ export class SyncScheduler {
         const meta = dep.metadata as Record<string, unknown> | null | undefined;
         const pName = (meta?.projectName as string) || dep.externalId;
         const projectKey = `vercel:${pName}`;
-        const proj = projects.get(projectKey);
+        const proj = discoveredProjects.get(projectKey);
         if (!proj) continue;
         const org = meta?.githubOrg as string | undefined;
         const repo = meta?.githubRepo as string | undefined;
@@ -651,8 +651,8 @@ export class SyncScheduler {
           continue;
         }
 
-        if (!projects.has(projectKey)) {
-          projects.set(projectKey, {
+        if (!discoveredProjects.has(projectKey)) {
+          discoveredProjects.set(projectKey, {
             name: projectName,
             environment: dep.environment || 'production',
             urls: [],
@@ -662,7 +662,7 @@ export class SyncScheduler {
           });
         }
 
-        const proj = projects.get(projectKey)!;
+        const proj = discoveredProjects.get(projectKey)!;
         const wfName = (meta?.workflowName as string) || dep.commitMessage || '';
         if (wfName && !proj.workflowNames.includes(wfName)) {
           proj.workflowNames.push(wfName);
@@ -682,7 +682,7 @@ export class SyncScheduler {
 
     let created = 0;
     let updated = 0;
-    for (const [projectKey, proj] of projects) {
+    for (const [projectKey, proj] of discoveredProjects) {
       try {
         const hostingType = this.inferHostingType(proj.workflowNames, provider, proj.metadata);
 
@@ -844,7 +844,7 @@ export class SyncScheduler {
         const serviceId = ulid();
         this.db.insert(websites).values({
           id: serviceId,
-          customerId: defaultCustomerId,
+          projectId: defaultProjectId,
           name: proj.name,
           type: serviceType,
           url: proj.urls[0] || null,

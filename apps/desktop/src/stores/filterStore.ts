@@ -21,7 +21,7 @@ interface DeploymentFilterState {
 
 interface IncidentFilterState {
   serviceId?: string;
-  customerId?: string;
+  projectId?: string;
   severity: IncidentSeverity[];
   status: IncidentStatus[];
   search: string;
@@ -44,7 +44,7 @@ export const useDeploymentFilterStore = create<DeploymentFilterState>((set) => (
 
 export const useIncidentFilterStore = create<IncidentFilterState>((set) => ({
   serviceId: undefined,
-  customerId: undefined,
+  projectId: undefined,
   severity: [],
   status: [],
   search: '',
@@ -52,7 +52,7 @@ export const useIncidentFilterStore = create<IncidentFilterState>((set) => ({
   resetFilters: () =>
     set({
       serviceId: undefined,
-      customerId: undefined,
+      projectId: undefined,
       severity: [],
       status: [],
       search: '',

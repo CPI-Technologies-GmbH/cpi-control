@@ -114,3 +114,44 @@ jobs:
             apps/desktop/src-tauri/target/release/bundle/**/*.msi
             apps/desktop/src-tauri/target/release/bundle/**/*.exe
           if-no-files-found: warn
+
+  # Create a rolling "latest" release on every main push
+  release-latest:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build-tauri
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.msi' -o -name '*.exe' \) -exec cp {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Delete existing latest release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+
+      - name: Create latest release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create latest \
+            --title "OpsBoard Latest ($(date -u +%Y-%m-%d))" \
+            --notes "Automated build from \`main\` branch.
+
+          **Commit:** ${{ github.sha }}
+          **Date:** $(date -u +%Y-%m-%d\ %H:%M\ UTC)
+
+          > These builds are unsigned development builds." \
+            --prerelease \
+            release-assets/*

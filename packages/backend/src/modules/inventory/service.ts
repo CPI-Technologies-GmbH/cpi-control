@@ -1,18 +1,20 @@
-import { eq, and, like, sql, inArray } from 'drizzle-orm';
+import { eq, and, like, sql, inArray, gte, desc } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { DB } from '../../db/client.js';
 import {
-  customers,
+  projects,
   websites,
   monitoringTargets,
   infrastructureBindings,
   repositoryBindings,
   deploymentSources,
   incidents,
+  healthCheckResults,
+  deploymentRecords,
 } from '../../db/schema.js';
 import type {
-  CreateCustomerBody,
-  UpdateCustomerBody,
+  CreateProjectBody,
+  UpdateProjectBody,
   CreateServiceBody,
   UpdateServiceBody,
   BatchUpdateServicesBody,
@@ -24,21 +26,21 @@ import type {
   CreateDeploymentSourceBody,
 } from './types.js';
 
-// ─── Customers ───────────────────────────────────────────────────────────────
+// ─── Projects ─────────────────────────────────────────────────────────────────
 
-export async function listCustomers(db: DB) {
-  return db.select().from(customers).all();
+export async function listProjects(db: DB) {
+  return db.select().from(projects).all();
 }
 
-export async function getCustomer(db: DB, id: string) {
-  const rows = db.select().from(customers).where(eq(customers.id, id)).all();
+export async function getProject(db: DB, id: string) {
+  const rows = db.select().from(projects).where(eq(projects.id, id)).all();
   return rows[0] || null;
 }
 
-export async function createCustomer(db: DB, body: CreateCustomerBody) {
+export async function createProject(db: DB, body: CreateProjectBody) {
   const now = new Date().toISOString();
   const id = ulid();
-  db.insert(customers)
+  db.insert(projects)
     .values({
       id,
       name: body.name,
@@ -51,15 +53,15 @@ export async function createCustomer(db: DB, body: CreateCustomerBody) {
       updatedAt: now,
     })
     .run();
-  return getCustomer(db, id);
+  return getProject(db, id);
 }
 
-export async function updateCustomer(db: DB, id: string, body: UpdateCustomerBody) {
+export async function updateProject(db: DB, id: string, body: UpdateProjectBody) {
   const now = new Date().toISOString();
-  const existing = await getCustomer(db, id);
+  const existing = await getProject(db, id);
   if (!existing) return null;
 
-  db.update(customers)
+  db.update(projects)
     .set({
       ...(body.name !== undefined && { name: body.name }),
       ...(body.slug !== undefined && { slug: body.slug }),
@@ -69,16 +71,123 @@ export async function updateCustomer(db: DB, id: string, body: UpdateCustomerBod
       ...(body.metadata !== undefined && { metadata: body.metadata }),
       updatedAt: now,
     })
-    .where(eq(customers.id, id))
+    .where(eq(projects.id, id))
     .run();
-  return getCustomer(db, id);
+  return getProject(db, id);
 }
 
-export async function deleteCustomer(db: DB, id: string) {
-  const existing = await getCustomer(db, id);
+export async function deleteProject(db: DB, id: string) {
+  const existing = await getProject(db, id);
   if (!existing) return false;
-  db.delete(customers).where(eq(customers.id, id)).run();
+  db.delete(projects).where(eq(projects.id, id)).run();
   return true;
+}
+
+export async function getProjectStats(db: DB, projectId: string) {
+  // Get all services for this project
+  const projectServices = db
+    .select()
+    .from(websites)
+    .where(eq(websites.projectId, projectId))
+    .all();
+
+  const serviceIds = projectServices.map((s) => s.id);
+  const serviceCount = serviceIds.length;
+
+  // Status breakdown
+  const statusBreakdown = { healthy: 0, degraded: 0, down: 0, unknown: 0 };
+  for (const svc of projectServices) {
+    const status = svc.status as keyof typeof statusBreakdown;
+    if (status in statusBreakdown) {
+      statusBreakdown[status]++;
+    } else {
+      statusBreakdown.unknown++;
+    }
+  }
+
+  // Open incidents count + recent incidents
+  const allIncidents = serviceIds.length > 0
+    ? db
+        .select()
+        .from(incidents)
+        .where(inArray(incidents.websiteId, serviceIds))
+        .orderBy(desc(incidents.detectedAt))
+        .all()
+    : [];
+
+  const openIncidents = allIncidents.filter((i) => i.status === 'open').length;
+
+  // Map service names onto incidents
+  const serviceMap = new Map(projectServices.map((s) => [s.id, s.name]));
+  const recentIncidents = allIncidents.slice(0, 5).map((i) => ({
+    id: i.id,
+    title: i.title,
+    severity: i.severity,
+    status: i.status,
+    detectedAt: i.detectedAt,
+    serviceName: serviceMap.get(i.websiteId) || 'Unknown',
+    serviceId: i.websiteId,
+  }));
+
+  // Recent deployments
+  const recentDeployments = serviceIds.length > 0
+    ? db
+        .select()
+        .from(deploymentRecords)
+        .where(inArray(deploymentRecords.websiteId, serviceIds))
+        .orderBy(desc(deploymentRecords.createdAt))
+        .limit(5)
+        .all()
+        .map((d) => ({
+          id: d.id,
+          status: d.status,
+          provider: d.provider,
+          branch: d.branch,
+          environment: d.environment,
+          createdAt: d.createdAt,
+          serviceName: serviceMap.get(d.websiteId ?? '') || 'Unknown',
+          serviceId: d.websiteId,
+        }))
+    : [];
+
+  // Uptime calculation: healthy checks / total checks in last 30 days
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const healthChecks = serviceIds.length > 0
+    ? db
+        .select()
+        .from(healthCheckResults)
+        .where(
+          and(
+            inArray(healthCheckResults.websiteId, serviceIds),
+            gte(healthCheckResults.checkedAt, thirtyDaysAgo)
+          )
+        )
+        .all()
+    : [];
+
+  const totalChecks = healthChecks.length;
+  const healthyChecks = healthChecks.filter((c) => c.status === 'healthy').length;
+  const uptimePercent30d = totalChecks > 0
+    ? Math.round((healthyChecks / totalChecks) * 10000) / 100
+    : null;
+
+  // Avg response time from recent health checks
+  const responseTimes = healthChecks
+    .map((c) => c.responseTimeMs)
+    .filter((t): t is number => t !== null && t !== undefined);
+  const avgResponseTimeMs = responseTimes.length > 0
+    ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
+    : null;
+
+  return {
+    serviceCount,
+    statusBreakdown,
+    openIncidents,
+    avgResponseTimeMs,
+    uptimePercent30d,
+    recentIncidents,
+    recentDeployments,
+  };
 }
 
 // ─── Services (formerly Websites) ────────────────────────────────────────────
@@ -86,8 +195,8 @@ export async function deleteCustomer(db: DB, id: string) {
 export async function listServices(db: DB, params: ServiceQueryParams) {
   const conditions: ReturnType<typeof eq>[] = [];
 
-  if (params.customerId) {
-    conditions.push(eq(websites.customerId, params.customerId));
+  if (params.projectId) {
+    conditions.push(eq(websites.projectId, params.projectId));
   }
   if (params.type) {
     conditions.push(eq(websites.type, params.type));
@@ -156,7 +265,7 @@ export async function createService(db: DB, body: CreateServiceBody) {
   db.insert(websites)
     .values({
       id,
-      customerId: body.customerId,
+      projectId: body.projectId,
       name: body.name,
       type: serviceType,
       url: body.url || null,
@@ -197,6 +306,7 @@ export async function updateService(db: DB, id: string, body: UpdateServiceBody)
       }),
       ...(body.tags !== undefined && { tags: body.tags }),
       ...(body.metadata !== undefined && { metadata: body.metadata }),
+      ...(body.projectId !== undefined && { projectId: body.projectId }),
       updatedAt: now,
     })
     .where(eq(websites.id, id))

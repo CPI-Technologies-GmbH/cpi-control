@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import type { Customer } from '@/types';
+import type { Project } from '@/types';
 import { X } from 'lucide-react';
 
 interface Props {
-  customer?: Customer | null;
-  onSubmit: (data: Partial<Customer>) => void;
+  project?: Project | null;
+  onSubmit: (data: Partial<Project>) => void;
   onCancel: () => void;
   isSubmitting?: boolean;
 }
@@ -17,24 +17,24 @@ function slugify(text: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-export default function CustomerForm({ customer, onSubmit, onCancel, isSubmitting }: Props) {
-  const [name, setName] = useState(customer?.name ?? '');
-  const [slug, setSlug] = useState(customer?.slug ?? '');
+export default function ProjectForm({ project, onSubmit, onCancel, isSubmitting }: Props) {
+  const [name, setName] = useState(project?.name ?? '');
+  const [slug, setSlug] = useState(project?.slug ?? '');
   const [slugTouched, setSlugTouched] = useState(false);
-  const [contactEmail, setContactEmail] = useState(customer?.contactEmail ?? '');
-  const [contactPhone, setContactPhone] = useState(customer?.contactPhone ?? '');
-  const [notes, setNotes] = useState(customer?.notes ?? '');
+  const [contactEmail, setContactEmail] = useState(project?.contactEmail ?? '');
+  const [contactPhone, setContactPhone] = useState(project?.contactPhone ?? '');
+  const [notes, setNotes] = useState(project?.notes ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (customer) {
-      setName(customer.name);
-      setSlug(customer.slug ?? '');
-      setContactEmail(customer.contactEmail ?? '');
-      setContactPhone(customer.contactPhone ?? '');
-      setNotes(customer.notes ?? '');
+    if (project) {
+      setName(project.name);
+      setSlug(project.slug ?? '');
+      setContactEmail(project.contactEmail ?? '');
+      setContactPhone(project.contactPhone ?? '');
+      setNotes(project.notes ?? '');
     }
-  }, [customer]);
+  }, [project]);
 
   function handleNameChange(value: string) {
     setName(value);
@@ -78,7 +78,7 @@ export default function CustomerForm({ customer, onSubmit, onCancel, isSubmittin
     <div className="card p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold text-gray-100">
-          {customer ? 'Edit Customer' : 'New Customer'}
+          {project ? 'Edit Project' : 'New Project'}
         </h2>
         <button
           onClick={onCancel}
@@ -98,7 +98,7 @@ export default function CustomerForm({ customer, onSubmit, onCancel, isSubmittin
             value={name}
             onChange={(e) => handleNameChange(e.target.value)}
             className="input"
-            placeholder="Customer name"
+            placeholder="Project name"
           />
           {errors.name && <p className="text-xs text-red-400 mt-1">{errors.name}</p>}
         </div>
@@ -112,7 +112,7 @@ export default function CustomerForm({ customer, onSubmit, onCancel, isSubmittin
             value={slug}
             onChange={(e) => handleSlugChange(e.target.value)}
             className="input font-mono text-sm"
-            placeholder="customer-slug"
+            placeholder="project-slug"
           />
           <p className="text-xs text-gray-600 mt-1">Auto-generated from name. Used as unique identifier.</p>
           {errors.slug && <p className="text-xs text-red-400 mt-1">{errors.slug}</p>}
@@ -149,14 +149,14 @@ export default function CustomerForm({ customer, onSubmit, onCancel, isSubmittin
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             className="input min-h-[80px] resize-y"
-            placeholder="Internal notes about this customer..."
+            placeholder="Internal notes about this project..."
             rows={3}
           />
         </div>
 
         <div className="flex items-center gap-3 pt-2">
           <button type="submit" disabled={isSubmitting} className="btn-primary">
-            {isSubmitting ? 'Saving...' : customer ? 'Update Customer' : 'Create Customer'}
+            {isSubmitting ? 'Saving...' : project ? 'Update Project' : 'Create Project'}
           </button>
           <button type="button" onClick={onCancel} className="btn-secondary">
             Cancel

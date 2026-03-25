@@ -164,7 +164,7 @@ export default function IncidentDetail() {
                 {incident.serviceName || 'Unknown'}
               </Link>
               <span className="text-gray-700">|</span>
-              <span>{incident.customerName || ''}</span>
+              <span>{incident.projectName || ''}</span>
               <span className="text-gray-700">|</span>
               <span className="flex items-center gap-1">
                 <Clock size={12} />

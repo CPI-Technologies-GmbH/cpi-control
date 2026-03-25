@@ -19,14 +19,14 @@ const batchTypeOptions: { value: ServiceType; label: string }[] = [
   { value: 'service', label: 'Private' },
 ];
 
-export default function ServiceList({ customerId }: { customerId?: string }) {
+export default function ServiceList({ projectId }: { projectId?: string }) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<ServiceType | 'all'>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchUpdating, setBatchUpdating] = useState(false);
 
   const filters: ServiceFilters = {
-    ...(customerId && { customerId }),
+    ...(projectId && { projectId }),
     ...(search && { search }),
     ...(typeFilter !== 'all' && { type: typeFilter }),
   };
@@ -264,7 +264,7 @@ export default function ServiceList({ customerId }: { customerId?: string }) {
                   Type
                 </th>
                 <th className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium">
-                  Customer
+                  Project
                 </th>
                 <th className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium">
                   Environment
@@ -331,7 +331,7 @@ export default function ServiceList({ customerId }: { customerId?: string }) {
                       )}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-400">{s.customerName || '\u2014'}</td>
+                  <td className="px-4 py-3 text-gray-400">{s.projectName || '\u2014'}</td>
                   <td className="px-4 py-3">
                     <span className="badge bg-gray-700/50 text-gray-400 border-gray-600/50">
                       {s.environment}

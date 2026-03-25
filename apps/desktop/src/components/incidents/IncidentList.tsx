@@ -39,7 +39,7 @@ export default function IncidentListPage() {
     ...(filters.status.length > 0 && { status: filters.status }),
     ...(filters.search && { search: filters.search }),
     ...(filters.serviceId && { serviceId: filters.serviceId }),
-    ...(filters.customerId && { customerId: filters.customerId }),
+    ...(filters.projectId && { projectId: filters.projectId }),
   };
 
   const { data: incidents, isLoading, error } = useIncidents(apiFilters);
@@ -191,7 +191,7 @@ export default function IncidentListPage() {
                 </h3>
                 <div className="flex items-center gap-3 mt-1">
                   <span className="text-xs text-gray-500">
-                    {incident.serviceName || 'Unknown'} &middot; {incident.customerName || ''}
+                    {incident.serviceName || 'Unknown'} &middot; {incident.projectName || ''}
                   </span>
                   <span className="flex items-center gap-1 text-xs text-gray-500">
                     <Clock size={10} />

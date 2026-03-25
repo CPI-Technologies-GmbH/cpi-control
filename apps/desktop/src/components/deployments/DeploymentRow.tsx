@@ -17,7 +17,7 @@ export default function DeploymentRow({ deployment }: Props) {
       {/* Service */}
       <td className="px-4 py-3">
         <p className="text-sm font-medium text-gray-200">{dep.serviceName || '—'}</p>
-        <p className="text-xs text-gray-500">{dep.customerName || ''}</p>
+        <p className="text-xs text-gray-500">{dep.projectName || ''}</p>
       </td>
 
       {/* Last Commit */}

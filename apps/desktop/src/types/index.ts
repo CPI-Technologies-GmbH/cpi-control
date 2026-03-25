@@ -24,7 +24,7 @@ export type NotificationEventType = 'incident.opened' | 'incident.resolved' | 'd
 
 // ─── Entities ──────────────────────────────────────────────────────────────
 
-export interface Customer {
+export interface Project {
   id: string;
   name: string;
   slug: string;
@@ -38,7 +38,7 @@ export interface Customer {
 
 export interface Service {
   id: string;
-  customerId: string | null;
+  projectId: string | null;
   name: string;
   url: string;
   type: ServiceType;
@@ -53,7 +53,7 @@ export interface Service {
   createdAt: string;
   updatedAt: string;
   // Joined fields (returned by API)
-  customerName?: string;
+  projectName?: string;
   lastResponseTimeMs?: number | null;
   lastCheckedAt?: string | null;
   openIncidentCount?: number;
@@ -128,7 +128,7 @@ export interface Incident {
   updatedAt: string;
   // Joined
   serviceName?: string;
-  customerName?: string;
+  projectName?: string;
 }
 
 export interface IncidentEvent {
@@ -201,7 +201,7 @@ export interface DeploymentRecord {
   updatedAt: string;
   // Joined
   serviceName?: string;
-  customerName?: string;
+  projectName?: string;
 }
 
 export interface RemoteAgent {
@@ -245,7 +245,7 @@ export interface NotificationRule {
   cooldownMinutes?: number | null;
   lastNotifiedAt?: string | null;
   serviceFilter?: string[] | null;
-  customerFilter?: string[] | null;
+  projectFilter?: string[] | null;
   metadata?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
@@ -255,7 +255,7 @@ export interface NotificationRule {
 
 export interface DashboardSummary {
   totalServices: number;
-  totalCustomers: number;
+  totalProjects: number;
   serviceStatus: {
     healthy: number;
     degraded: number;
@@ -278,7 +278,7 @@ export interface DashboardSummary {
 export interface AggregatedDeployment {
   serviceId: string;
   serviceName: string;
-  customerName: string;
+  projectName: string;
   lastDeployment?: DeploymentRecord | null;
   ciStatus?: DeploymentStatus | null;
   serviceStatusAfter?: ServiceStatus | null;
@@ -323,10 +323,44 @@ export interface LogViewConfigData {
   columns?: string[];
 }
 
+// ─── Project Stats ──────────────────────────────────────────────────────────
+
+export interface ProjectStats {
+  serviceCount: number;
+  statusBreakdown: {
+    healthy: number;
+    degraded: number;
+    down: number;
+    unknown: number;
+  };
+  openIncidents: number;
+  avgResponseTimeMs: number | null;
+  uptimePercent30d: number | null;
+  recentIncidents: Array<{
+    id: string;
+    title: string;
+    severity: IncidentSeverity;
+    status: IncidentStatus;
+    detectedAt: string;
+    serviceName: string;
+    serviceId: string;
+  }>;
+  recentDeployments: Array<{
+    id: string;
+    status: DeploymentStatus;
+    provider: DeploymentProvider;
+    branch: string | null;
+    environment: string | null;
+    createdAt: string;
+    serviceName: string;
+    serviceId: string | null;
+  }>;
+}
+
 // ─── Filter Types ──────────────────────────────────────────────────────────
 
 export interface ServiceFilters {
-  customerId?: string;
+  projectId?: string;
   type?: ServiceType;
   environments?: Environment[];
   hostingTypes?: HostingType[];
@@ -337,7 +371,7 @@ export interface ServiceFilters {
 
 export interface IncidentFilters {
   serviceId?: string;
-  customerId?: string;
+  projectId?: string;
   severity?: IncidentSeverity[];
   status?: IncidentStatus[];
   search?: string;

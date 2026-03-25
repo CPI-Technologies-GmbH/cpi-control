@@ -13,20 +13,20 @@ afterEach(async () => {
   await app.close();
 });
 
-// Helper to set up a customer + service so we can create incidents
+// Helper to set up a project + service so we can create incidents
 async function setupService() {
-  const custRes = await app.inject({
+  const projRes = await app.inject({
     method: 'POST',
-    url: '/api/inventory/customers',
-    payload: { name: 'Incident Test Customer', slug: 'incident-test' },
+    url: '/api/inventory/projects',
+    payload: { name: 'Incident Test Project', slug: 'incident-test' },
   });
-  const customer = custRes.json();
+  const project = projRes.json();
 
   const svcRes = await app.inject({
     method: 'POST',
     url: '/api/inventory/services',
     payload: {
-      customerId: customer.id,
+      projectId: project.id,
       name: 'Monitored Site',
       url: 'https://monitored.example.com',
       environment: 'production',
@@ -34,7 +34,7 @@ async function setupService() {
     },
   });
   const service = svcRes.json();
-  return { customer, service };
+  return { project, service };
 }
 
 // Helper to send a health event via the webhook endpoint

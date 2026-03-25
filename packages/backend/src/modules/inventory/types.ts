@@ -1,4 +1,4 @@
-export interface CreateCustomerBody {
+export interface CreateProjectBody {
   name: string;
   slug: string;
   contactEmail?: string;
@@ -7,7 +7,7 @@ export interface CreateCustomerBody {
   metadata?: Record<string, unknown>;
 }
 
-export interface UpdateCustomerBody {
+export interface UpdateProjectBody {
   name?: string;
   slug?: string;
   contactEmail?: string;
@@ -19,7 +19,7 @@ export interface UpdateCustomerBody {
 export type ServiceType = 'website' | 'service';
 
 export interface CreateServiceBody {
-  customerId?: string;
+  projectId?: string;
   name: string;
   type?: ServiceType;
   url?: string;
@@ -44,6 +44,7 @@ export interface UpdateServiceBody {
   checkIntervalSeconds?: number;
   tags?: string[];
   metadata?: Record<string, unknown>;
+  projectId?: string | null;
 }
 
 export interface BatchUpdateServicesBody {
@@ -56,7 +57,7 @@ export interface BatchUpdateServicesBody {
 }
 
 export interface ServiceQueryParams {
-  customerId?: string;
+  projectId?: string;
   type?: ServiceType;
   environment?: string;
   hostingType?: string;

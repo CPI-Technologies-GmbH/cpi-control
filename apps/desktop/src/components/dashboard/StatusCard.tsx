@@ -24,7 +24,7 @@ export default function StatusCard({ service }: Props) {
             <h3 className="text-sm font-semibold text-gray-100 truncate group-hover:text-blue-400 transition-colors">
               {service.name}
             </h3>
-            <p className="text-xs text-gray-500 truncate">{service.customerName || '\u2014'}</p>
+            <p className="text-xs text-gray-500 truncate">{service.projectName || '\u2014'}</p>
           </div>
         </div>
         <ExternalLink size={14} className="text-gray-600 group-hover:text-gray-400 flex-shrink-0 mt-0.5" />

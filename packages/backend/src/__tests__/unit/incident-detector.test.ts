@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { IncidentDetector } from '../../modules/incidents/service.js';
 import { createDatabase, runMigrations, type DB } from '../../db/client.js';
-import { customers, websites, incidents } from '../../db/schema.js';
+import { projects, websites, incidents } from '../../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
 
@@ -14,11 +14,11 @@ function seedService(): string {
   const custId = ulid();
   const svcId = ulid();
 
-  db.insert(customers)
+  db.insert(projects)
     .values({
       id: custId,
-      name: 'Test Customer',
-      slug: 'test-cust-' + custId.slice(-6),
+      name: 'Test Project',
+      slug: 'test-proj-' + custId.slice(-6),
       createdAt: now,
       updatedAt: now,
     })
@@ -27,7 +27,7 @@ function seedService(): string {
   db.insert(websites)
     .values({
       id: svcId,
-      customerId: custId,
+      projectId: custId,
       name: 'Test Service',
       url: 'https://test.example.com',
       environment: 'production',

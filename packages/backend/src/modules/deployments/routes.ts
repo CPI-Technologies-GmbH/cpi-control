@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { eq, and, desc, gte, inArray, sql } from 'drizzle-orm';
-import { deploymentRecords, websites, customers } from '../../db/schema.js';
+import { deploymentRecords, websites, projects } from '../../db/schema.js';
 import { DeploymentAggregator } from './aggregator.js';
 import type { DeploymentQueryParams } from './types.js';
 
@@ -68,11 +68,11 @@ export default async function deploymentRoutes(app: FastifyInstance) {
           createdAt: deploymentRecords.createdAt,
           updatedAt: deploymentRecords.updatedAt,
           serviceName: websites.name,
-          customerName: customers.name,
+          projectName: projects.name,
         })
         .from(deploymentRecords)
         .leftJoin(websites, eq(deploymentRecords.websiteId, websites.id))
-        .leftJoin(customers, eq(websites.customerId, customers.id));
+        .leftJoin(projects, eq(websites.projectId, projects.id));
 
       if (conditions.length > 0) {
         query = query.where(and(...conditions)) as any;

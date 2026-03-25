@@ -1,7 +1,7 @@
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 
-// ─── Customers ───────────────────────────────────────────────────────────────
-export const customers = sqliteTable('customers', {
+// ─── Projects (DB table: customers) ─────────────────────────────────────────
+export const projects = sqliteTable('customers', {
   id: text('id').primaryKey(), // ULID
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
@@ -16,8 +16,8 @@ export const customers = sqliteTable('customers', {
 // ─── Websites ────────────────────────────────────────────────────────────────
 export const websites = sqliteTable('websites', {
   id: text('id').primaryKey(), // ULID
-  customerId: text('customer_id')
-    .references(() => customers.id, { onDelete: 'set null' }),
+  projectId: text('customer_id')
+    .references(() => projects.id, { onDelete: 'set null' }),
   name: text('name').notNull(),
   type: text('type').notNull().default('website'), // website | service
   url: text('url'),
@@ -280,7 +280,7 @@ export const notificationRules = sqliteTable('notification_rules', {
   cooldownMinutes: integer('cooldown_minutes').default(15),
   lastNotifiedAt: text('last_notified_at'),
   websiteFilter: text('website_filter', { mode: 'json' }).$type<string[]>(), // website IDs or null for all
-  customerFilter: text('customer_filter', { mode: 'json' }).$type<string[]>(), // customer IDs or null for all
+  projectFilter: text('customer_filter', { mode: 'json' }).$type<string[]>(), // project IDs or null for all
   metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>(),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),

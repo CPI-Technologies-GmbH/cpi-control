@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
-  Users,
+  FolderKanban,
   Layers,
   Rocket,
   Clock,
@@ -18,7 +18,7 @@ import clsx from 'clsx';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Customers', href: '/customers', icon: Users },
+  { name: 'Projects', href: '/projects', icon: FolderKanban },
   { name: 'Services', href: '/services', icon: Layers },
   { name: 'Deployments', href: '/deployments', icon: Rocket },
   { name: 'Cron Jobs', href: '/cronjobs', icon: Clock },

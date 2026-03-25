@@ -1,30 +1,40 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { customers as api } from '@/lib/api';
-import ServiceList from '@/components/services/ServiceList';
-import CustomerForm from './CustomerForm';
-import { ArrowLeft, Edit2, Trash2, Mail, Phone, FileText } from 'lucide-react';
+import clsx from 'clsx';
+import { projects as api } from '@/lib/api';
+import ProjectForm from './ProjectForm';
+import ProjectDashboard from './ProjectDashboard';
+import ProjectServiceManager from './ProjectServiceManager';
+import { ArrowLeft, Edit2, Trash2, Mail, Phone, FileText, LayoutDashboard, Server } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
-import type { Customer } from '@/types';
+import type { Project } from '@/types';
 
-export default function CustomerDetail() {
+type Tab = 'dashboard' | 'services';
+
+const tabs: Array<{ key: Tab; label: string; icon: React.ReactNode }> = [
+  { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={14} /> },
+  { key: 'services', label: 'Services', icon: <Server size={14} /> },
+];
+
+export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
+  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const qc = useQueryClient();
 
-  const { data: customer, isLoading, error } = useQuery({
-    queryKey: ['customers', id],
+  const { data: project, isLoading, error } = useQuery({
+    queryKey: ['projects', id],
     queryFn: () => api.get(id!),
     enabled: !!id,
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: Partial<Customer>) => api.update(id!, data),
+    mutationFn: (data: Partial<Project>) => api.update(id!, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['customers', id] });
-      qc.invalidateQueries({ queryKey: ['customers'] });
+      qc.invalidateQueries({ queryKey: ['projects', id] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
       setEditing(false);
     },
   });
@@ -32,7 +42,7 @@ export default function CustomerDetail() {
   const deleteMutation = useMutation({
     mutationFn: () => api.delete(id!),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['customers'] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
       window.history.back();
     },
   });
@@ -47,14 +57,14 @@ export default function CustomerDetail() {
     );
   }
 
-  if (error || !customer) {
+  if (error || !project) {
     return (
       <div className="card p-8 text-center">
         <p className="text-red-400 mb-4">
-          {error ? 'Failed to load customer' : 'Customer not found'}
+          {error ? 'Failed to load project' : 'Project not found'}
         </p>
-        <Link to="/customers" className="btn-secondary text-sm">
-          Back to Customers
+        <Link to="/projects" className="btn-secondary text-sm">
+          Back to Projects
         </Link>
       </div>
     );
@@ -63,12 +73,12 @@ export default function CustomerDetail() {
   if (editing) {
     return (
       <div className="space-y-6">
-        <Link to="/customers" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors">
+        <Link to="/projects" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors">
           <ArrowLeft size={16} />
-          Back to Customers
+          Back to Projects
         </Link>
-        <CustomerForm
-          customer={customer}
+        <ProjectForm
+          project={project}
           onSubmit={(data) => updateMutation.mutate(data)}
           onCancel={() => setEditing(false)}
           isSubmitting={updateMutation.isPending}
@@ -80,16 +90,16 @@ export default function CustomerDetail() {
   return (
     <div className="space-y-6">
       {/* Back link */}
-      <Link to="/customers" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors">
+      <Link to="/projects" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors">
         <ArrowLeft size={16} />
-        Back to Customers
+        Back to Projects
       </Link>
 
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-100 mb-1">{customer.name}</h1>
-          <p className="text-sm text-gray-500">Created {formatDate(customer.createdAt)}</p>
+          <h1 className="text-2xl font-bold text-gray-100 mb-1">{project.name}</h1>
+          <p className="text-sm text-gray-500">Created {formatDate(project.createdAt)}</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setEditing(true)} className="btn-secondary flex items-center gap-2 text-sm">
@@ -127,41 +137,56 @@ export default function CustomerDetail() {
             <Mail size={16} className="text-gray-500 mt-0.5" />
             <div>
               <p className="text-xs text-gray-500">Email</p>
-              <p className="text-sm text-gray-200">{customer.contactEmail || '—'}</p>
+              <p className="text-sm text-gray-200">{project.contactEmail || '—'}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
             <Phone size={16} className="text-gray-500 mt-0.5" />
             <div>
               <p className="text-xs text-gray-500">Phone</p>
-              <p className="text-sm text-gray-200">{customer.contactPhone || '—'}</p>
+              <p className="text-sm text-gray-200">{project.contactPhone || '—'}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
             <FileText size={16} className="text-gray-500 mt-0.5" />
             <div>
               <p className="text-xs text-gray-500">Slug</p>
-              <p className="text-sm text-gray-200 font-mono">{customer.slug}</p>
+              <p className="text-sm text-gray-200 font-mono">{project.slug}</p>
             </div>
           </div>
           <div>
             <p className="text-xs text-gray-500">Last Updated</p>
-            <p className="text-sm text-gray-200">{formatDate(customer.updatedAt)}</p>
+            <p className="text-sm text-gray-200">{formatDate(project.updatedAt)}</p>
           </div>
         </div>
-        {customer.notes && (
+        {project.notes && (
           <div className="mt-4 pt-4 border-t border-gray-700/50">
             <p className="text-xs text-gray-500 mb-1">Notes</p>
-            <p className="text-sm text-gray-300 whitespace-pre-wrap">{customer.notes}</p>
+            <p className="text-sm text-gray-300 whitespace-pre-wrap">{project.notes}</p>
           </div>
         )}
       </div>
 
-      {/* Services */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-200 mb-4">Services</h2>
-        <ServiceList customerId={customer.id} />
+      {/* Tabs */}
+      <div className="flex items-center gap-6 border-b border-gray-800 pb-0">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={clsx(
+              'flex items-center gap-1.5 pb-3 text-sm font-medium transition-colors',
+              activeTab === tab.key ? 'tab-active' : 'tab-inactive'
+            )}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
       </div>
+
+      {/* Tab content */}
+      {activeTab === 'dashboard' && <ProjectDashboard projectId={project.id} />}
+      {activeTab === 'services' && <ProjectServiceManager project={project} />}
     </div>
   );
 }

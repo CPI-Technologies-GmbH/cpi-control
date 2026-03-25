@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { eq, and, gte, sql } from 'drizzle-orm';
 import {
   websites,
-  customers,
+  projects,
   incidents,
   deploymentRecords,
   healthCheckResults,
@@ -65,12 +65,12 @@ export async function dashboardRoutes(app: FastifyInstance) {
       error: agents.filter((a) => a.status === 'error').length,
     };
 
-    // Total customers
-    const totalCustomers = db.select().from(customers).all().length;
+    // Total projects
+    const totalProjects = db.select().from(projects).all().length;
 
     return reply.send({
       totalServices,
-      totalCustomers,
+      totalProjects,
       serviceStatus: {
         healthy: healthyCount,
         degraded: degradedCount,
@@ -96,7 +96,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
         status: websites.status,
         environment: websites.environment,
         hostingType: websites.hostingType,
-        customerId: websites.customerId,
+        projectId: websites.projectId,
       })
       .from(websites)
       .all();
@@ -105,15 +105,15 @@ export async function dashboardRoutes(app: FastifyInstance) {
     const result = [];
 
     for (const service of allServices) {
-      // Get customer name
-      let customerName = 'Unassigned';
-      if (service.customerId) {
-        const customerRows = db
-          .select({ name: customers.name })
-          .from(customers)
-          .where(eq(customers.id, service.customerId))
+      // Get project name
+      let projectName = 'Unassigned';
+      if (service.projectId) {
+        const projectRows = db
+          .select({ name: projects.name })
+          .from(projects)
+          .where(eq(projects.id, service.projectId))
           .all();
-        customerName = customerRows[0]?.name || 'Unknown';
+        projectName = projectRows[0]?.name || 'Unknown';
       }
 
       // Get latest health check
@@ -146,7 +146,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
         status: service.status,
         environment: service.environment,
         hostingType: service.hostingType,
-        customerName,
+        projectName,
         lastCheck: latestCheck
           ? {
               status: latestCheck.status,

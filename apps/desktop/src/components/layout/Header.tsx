@@ -21,7 +21,7 @@ function useBreadcrumbs(): { title: string; breadcrumbs: Breadcrumb[] } {
     let title = 'Dashboard';
 
     const routeMap: Record<string, string> = {
-      customers: 'Customers',
+      projects: 'Projects',
       services: 'Services',
       deployments: 'Deployments',
       cronjobs: 'Cron Jobs',

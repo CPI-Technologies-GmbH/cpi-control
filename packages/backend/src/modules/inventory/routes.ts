@@ -1,8 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import * as service from './service.js';
 import type {
-  CreateCustomerBody,
-  UpdateCustomerBody,
+  CreateProjectBody,
+  UpdateProjectBody,
   CreateServiceBody,
   UpdateServiceBody,
   BatchUpdateServicesBody,
@@ -17,54 +17,63 @@ import type {
 export default async function inventoryRoutes(app: FastifyInstance) {
   const db = app.db;
 
-  // ─── Customers ───────────────────────────────────────────────────────────────
+  // ─── Projects ───────────────────────────────────────────────────────────────
 
-  app.get('/customers', async (_request, reply) => {
-    const result = await service.listCustomers(db);
+  app.get('/projects', async (_request, reply) => {
+    const result = await service.listProjects(db);
     return reply.send(result);
   });
 
-  app.get<{ Params: { id: string } }>('/customers/:id', async (request, reply) => {
-    const customer = await service.getCustomer(db, request.params.id);
-    if (!customer) {
-      return reply.status(404).send({ error: 'Customer not found' });
+  app.get<{ Params: { id: string } }>('/projects/:id', async (request, reply) => {
+    const project = await service.getProject(db, request.params.id);
+    if (!project) {
+      return reply.status(404).send({ error: 'Project not found' });
     }
-    return reply.send(customer);
+    return reply.send(project);
   });
 
-  app.post<{ Body: CreateCustomerBody }>('/customers', async (request, reply) => {
+  app.post<{ Body: CreateProjectBody }>('/projects', async (request, reply) => {
     const body = request.body;
     if (!body.name || !body.slug) {
       return reply.status(400).send({ error: 'name and slug are required' });
     }
     try {
-      const customer = await service.createCustomer(db, body);
-      return reply.status(201).send(customer);
+      const project = await service.createProject(db, body);
+      return reply.status(201).send(project);
     } catch (err: any) {
       if (err.message?.includes('UNIQUE constraint')) {
-        return reply.status(409).send({ error: 'Customer slug already exists' });
+        return reply.status(409).send({ error: 'Project slug already exists' });
       }
       throw err;
     }
   });
 
-  app.put<{ Params: { id: string }; Body: UpdateCustomerBody }>(
-    '/customers/:id',
+  app.put<{ Params: { id: string }; Body: UpdateProjectBody }>(
+    '/projects/:id',
     async (request, reply) => {
-      const result = await service.updateCustomer(db, request.params.id, request.body);
+      const result = await service.updateProject(db, request.params.id, request.body);
       if (!result) {
-        return reply.status(404).send({ error: 'Customer not found' });
+        return reply.status(404).send({ error: 'Project not found' });
       }
       return reply.send(result);
     }
   );
 
-  app.delete<{ Params: { id: string } }>('/customers/:id', async (request, reply) => {
-    const deleted = await service.deleteCustomer(db, request.params.id);
+  app.delete<{ Params: { id: string } }>('/projects/:id', async (request, reply) => {
+    const deleted = await service.deleteProject(db, request.params.id);
     if (!deleted) {
-      return reply.status(404).send({ error: 'Customer not found' });
+      return reply.status(404).send({ error: 'Project not found' });
     }
     return reply.status(204).send();
+  });
+
+  app.get<{ Params: { id: string } }>('/projects/:id/stats', async (request, reply) => {
+    const project = await service.getProject(db, request.params.id);
+    if (!project) {
+      return reply.status(404).send({ error: 'Project not found' });
+    }
+    const stats = await service.getProjectStats(db, request.params.id);
+    return reply.send(stats);
   });
 
   // ─── Services (formerly Websites) ────────────────────────────────────────────
@@ -84,10 +93,10 @@ export default async function inventoryRoutes(app: FastifyInstance) {
 
   app.post<{ Body: CreateServiceBody }>('/services', async (request, reply) => {
     const body = request.body;
-    if (!body.customerId || !body.name || !body.environment || !body.hostingType) {
+    if (!body.projectId || !body.name || !body.environment || !body.hostingType) {
       return reply
         .status(400)
-        .send({ error: 'customerId, name, environment, and hostingType are required' });
+        .send({ error: 'projectId, name, environment, and hostingType are required' });
     }
     try {
       const svc = await service.createService(db, body);

@@ -1,8 +1,8 @@
 import { Routes, Route } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import OverviewGrid from '@/components/dashboard/OverviewGrid';
-import CustomerList from '@/components/customers/CustomerList';
-import CustomerDetail from '@/components/customers/CustomerDetail';
+import ProjectList from '@/components/projects/ProjectList';
+import ProjectDetail from '@/components/projects/ProjectDetail';
 import ServiceList from '@/components/services/ServiceList';
 import ServiceDetail from '@/components/services/ServiceDetail';
 import DeploymentBoard from '@/components/deployments/DeploymentBoard';
@@ -27,8 +27,8 @@ export default function App() {
           <MainLayout>
             <Routes>
               <Route path="/" element={<OverviewGrid />} />
-              <Route path="/customers" element={<CustomerList />} />
-              <Route path="/customers/:id" element={<CustomerDetail />} />
+              <Route path="/projects" element={<ProjectList />} />
+              <Route path="/projects/:id" element={<ProjectDetail />} />
               <Route path="/services" element={<ServiceList />} />
               <Route path="/services/:id" element={<ServiceDetail />} />
               <Route path="/deployments" element={<DeploymentBoard />} />

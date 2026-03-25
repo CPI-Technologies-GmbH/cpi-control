@@ -43,7 +43,7 @@ export default function OverviewGrid() {
   const [showFilters, setShowFilters] = useState(false);
 
   const apiFilters: ServiceFilters = {
-    ...(activeFilters.customerId && { customerId: activeFilters.customerId }),
+    ...(activeFilters.projectId && { projectId: activeFilters.projectId }),
     ...(activeFilters.environments.length > 0 && { environments: activeFilters.environments }),
     ...(activeFilters.hostingTypes.length > 0 && { hostingTypes: activeFilters.hostingTypes }),
     ...(activeFilters.statuses.length > 0 && { statuses: activeFilters.statuses }),
@@ -201,7 +201,7 @@ export default function OverviewGrid() {
               <p className="text-sm text-gray-600">
                 {hasActiveFilters
                   ? 'Try adjusting your filters'
-                  : 'Add a customer and service to get started'}
+                  : 'Add a project and service to get started'}
               </p>
             </div>
           )}

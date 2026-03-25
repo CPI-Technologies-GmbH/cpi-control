@@ -13,26 +13,26 @@ afterEach(async () => {
   await app.close();
 });
 
-// Helper to create a customer through the API
-async function createCustomer(overrides: Record<string, unknown> = {}) {
+// Helper to create a project through the API
+async function createProject(overrides: Record<string, unknown> = {}) {
   const body = {
-    name: 'Test Customer',
-    slug: 'test-customer',
+    name: 'Test Project',
+    slug: 'test-project',
     contactEmail: 'test@example.com',
     ...overrides,
   };
   const res = await app.inject({
     method: 'POST',
-    url: '/api/inventory/customers',
+    url: '/api/inventory/projects',
     payload: body,
   });
   return { res, body };
 }
 
-// Helper to create a service through the API (requires an existing customer ID)
-async function createService(customerId: string, overrides: Record<string, unknown> = {}) {
+// Helper to create a service through the API (requires an existing project ID)
+async function createService(projectId: string, overrides: Record<string, unknown> = {}) {
   const body = {
-    customerId,
+    projectId,
     name: 'My Service',
     url: 'https://example.com',
     environment: 'production',
@@ -47,71 +47,71 @@ async function createService(customerId: string, overrides: Record<string, unkno
   return { res, body };
 }
 
-describe('Inventory API - Customers', () => {
-  it('should create a customer and list it', async () => {
-    const { res } = await createCustomer();
+describe('Inventory API - Projects', () => {
+  it('should create a project and list it', async () => {
+    const { res } = await createProject();
     expect(res.statusCode).toBe(201);
     const created = res.json();
-    expect(created.name).toBe('Test Customer');
-    expect(created.slug).toBe('test-customer');
+    expect(created.name).toBe('Test Project');
+    expect(created.slug).toBe('test-project');
     expect(created.id).toBeDefined();
 
     const listRes = await app.inject({
       method: 'GET',
-      url: '/api/inventory/customers',
+      url: '/api/inventory/projects',
     });
     expect(listRes.statusCode).toBe(200);
-    const customers = listRes.json();
-    expect(customers).toHaveLength(1);
-    expect(customers[0].id).toBe(created.id);
+    const projects = listRes.json();
+    expect(projects).toHaveLength(1);
+    expect(projects[0].id).toBe(created.id);
   });
 
-  it('should update a customer', async () => {
-    const { res: createRes } = await createCustomer();
-    const customer = createRes.json();
+  it('should update a project', async () => {
+    const { res: createRes } = await createProject();
+    const project = createRes.json();
 
     const updateRes = await app.inject({
       method: 'PUT',
-      url: `/api/inventory/customers/${customer.id}`,
-      payload: { name: 'Updated Customer', contactEmail: 'updated@example.com' },
+      url: `/api/inventory/projects/${project.id}`,
+      payload: { name: 'Updated Project', contactEmail: 'updated@example.com' },
     });
     expect(updateRes.statusCode).toBe(200);
     const updated = updateRes.json();
-    expect(updated.name).toBe('Updated Customer');
+    expect(updated.name).toBe('Updated Project');
     expect(updated.contactEmail).toBe('updated@example.com');
-    expect(updated.slug).toBe('test-customer'); // slug unchanged
+    expect(updated.slug).toBe('test-project'); // slug unchanged
   });
 
-  it('should delete a customer', async () => {
-    const { res: createRes } = await createCustomer();
-    const customer = createRes.json();
+  it('should delete a project', async () => {
+    const { res: createRes } = await createProject();
+    const project = createRes.json();
 
     const deleteRes = await app.inject({
       method: 'DELETE',
-      url: `/api/inventory/customers/${customer.id}`,
+      url: `/api/inventory/projects/${project.id}`,
     });
     expect(deleteRes.statusCode).toBe(204);
 
     const getRes = await app.inject({
       method: 'GET',
-      url: `/api/inventory/customers/${customer.id}`,
+      url: `/api/inventory/projects/${project.id}`,
     });
     expect(getRes.statusCode).toBe(404);
   });
 
-  it('should return 404 when updating non-existent customer', async () => {
+  it('should return 404 when updating non-existent project', async () => {
     const res = await app.inject({
       method: 'PUT',
-      url: '/api/inventory/customers/nonexistent',
+      url: '/api/inventory/projects/nonexistent',
       payload: { name: 'Updated' },
     });
     expect(res.statusCode).toBe(404);
   });
 
-  it('should return 400 when creating customer without required fields', async () => {
+  it('should return 400 when creating project without required fields', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/api/inventory/customers',
+      url: '/api/inventory/projects',
       payload: { name: 'No Slug' },
     });
     expect(res.statusCode).toBe(400);
@@ -120,14 +120,14 @@ describe('Inventory API - Customers', () => {
 
 describe('Inventory API - Services', () => {
   it('should create a service with monitoring target and get full detail', async () => {
-    const { res: custRes } = await createCustomer();
-    const customer = custRes.json();
+    const { res: projRes } = await createProject();
+    const project = projRes.json();
 
-    const { res: svcRes } = await createService(customer.id);
+    const { res: svcRes } = await createService(project.id);
     expect(svcRes.statusCode).toBe(201);
     const service = svcRes.json();
     expect(service.name).toBe('My Service');
-    expect(service.customerId).toBe(customer.id);
+    expect(service.projectId).toBe(project.id);
     expect(service.status).toBe('unknown');
 
     // Create a monitoring target for this service
@@ -159,9 +159,9 @@ describe('Inventory API - Services', () => {
   });
 
   it('should create service, then create infra binding', async () => {
-    const { res: custRes } = await createCustomer();
-    const customer = custRes.json();
-    const { res: svcRes } = await createService(customer.id);
+    const { res: projRes } = await createProject();
+    const project = projRes.json();
+    const { res: svcRes } = await createService(project.id);
     const service = svcRes.json();
 
     const bindRes = await app.inject({
@@ -194,11 +194,11 @@ describe('Inventory API - Services', () => {
   });
 
   it('should filter services by environment', async () => {
-    const { res: custRes } = await createCustomer();
-    const customer = custRes.json();
+    const { res: projRes } = await createProject();
+    const project = projRes.json();
 
-    await createService(customer.id, { name: 'Prod Site', environment: 'production' });
-    await createService(customer.id, { name: 'Staging Site', environment: 'staging' });
+    await createService(project.id, { name: 'Prod Site', environment: 'production' });
+    await createService(project.id, { name: 'Staging Site', environment: 'staging' });
 
     const prodRes = await app.inject({
       method: 'GET',
@@ -220,10 +220,10 @@ describe('Inventory API - Services', () => {
   });
 
   it('should filter services by status', async () => {
-    const { res: custRes } = await createCustomer();
-    const customer = custRes.json();
+    const { res: projRes } = await createProject();
+    const project = projRes.json();
 
-    const { res: svcRes } = await createService(customer.id, { name: 'Site A' });
+    const { res: svcRes } = await createService(project.id, { name: 'Site A' });
     const serviceA = svcRes.json();
 
     // Update status to healthy
@@ -233,7 +233,7 @@ describe('Inventory API - Services', () => {
       payload: { status: 'healthy' },
     });
 
-    await createService(customer.id, { name: 'Site B' });
+    await createService(project.id, { name: 'Site B' });
 
     const healthyRes = await app.inject({
       method: 'GET',
@@ -255,11 +255,11 @@ describe('Inventory API - Services', () => {
   });
 
   it('should search services by name', async () => {
-    const { res: custRes } = await createCustomer();
-    const customer = custRes.json();
+    const { res: projRes } = await createProject();
+    const project = projRes.json();
 
-    await createService(customer.id, { name: 'Alpha Portal' });
-    await createService(customer.id, { name: 'Beta Dashboard' });
+    await createService(project.id, { name: 'Alpha Portal' });
+    await createService(project.id, { name: 'Beta Dashboard' });
 
     const searchRes = await app.inject({
       method: 'GET',
@@ -271,11 +271,11 @@ describe('Inventory API - Services', () => {
     expect(results[0].name).toBe('Alpha Portal');
   });
 
-  it('should cascade delete services when customer is deleted', async () => {
-    const { res: custRes } = await createCustomer();
-    const customer = custRes.json();
+  it('should set projectId null when project is deleted', async () => {
+    const { res: projRes } = await createProject();
+    const project = projRes.json();
 
-    const { res: svcRes } = await createService(customer.id, { name: 'Will Be Deleted' });
+    const { res: svcRes } = await createService(project.id, { name: 'Will Be Orphaned' });
     const service = svcRes.json();
 
     // Confirm service exists
@@ -285,20 +285,20 @@ describe('Inventory API - Services', () => {
     });
     expect(beforeRes.statusCode).toBe(200);
 
-    // Delete the customer
+    // Delete the project
     const deleteRes = await app.inject({
       method: 'DELETE',
-      url: `/api/inventory/customers/${customer.id}`,
+      url: `/api/inventory/projects/${project.id}`,
     });
     expect(deleteRes.statusCode).toBe(204);
 
-    // Service should still exist (customerId is set null, not cascade)
+    // Service should still exist (projectId is set null, not cascade)
     const afterRes = await app.inject({
       method: 'GET',
       url: `/api/inventory/services/${service.id}`,
     });
     expect(afterRes.statusCode).toBe(200);
     const afterService = afterRes.json();
-    expect(afterService.customerId).toBeNull();
+    expect(afterService.projectId).toBeNull();
   });
 });

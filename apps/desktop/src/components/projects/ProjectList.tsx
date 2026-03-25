@@ -1,47 +1,47 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { customers as api } from '@/lib/api';
-import CustomerForm from './CustomerForm';
-import { Users, Plus, Search, Mail, Phone, ChevronRight } from 'lucide-react';
+import { projects as api } from '@/lib/api';
+import ProjectForm from './ProjectForm';
+import { FolderKanban, Plus, Search, Mail, Phone, ChevronRight } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/formatters';
-import type { Customer } from '@/types';
+import type { Project } from '@/types';
 
-export default function CustomerList() {
+export default function ProjectList() {
   const [showForm, setShowForm] = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [search, setSearch] = useState('');
   const qc = useQueryClient();
 
-  const { data: customers, isLoading, error } = useQuery({
-    queryKey: ['customers'],
+  const { data: projects, isLoading, error } = useQuery({
+    queryKey: ['projects'],
     queryFn: api.list,
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: Partial<Customer>) => api.create(data),
+    mutationFn: (data: Partial<Project>) => api.create(data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['customers'] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
       setShowForm(false);
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Customer> }) => api.update(id, data),
+    mutationFn: ({ id, data }: { id: string; data: Partial<Project> }) => api.update(id, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['customers'] });
-      setEditingCustomer(null);
+      qc.invalidateQueries({ queryKey: ['projects'] });
+      setEditingProject(null);
       setShowForm(false);
     },
   });
 
-  const filtered = customers?.filter((c) =>
+  const filtered = projects?.filter((c) =>
     search ? c.name.toLowerCase().includes(search.toLowerCase()) : true
   );
 
-  function handleSubmit(data: Partial<Customer>) {
-    if (editingCustomer) {
-      updateMutation.mutate({ id: editingCustomer.id, data });
+  function handleSubmit(data: Partial<Project>) {
+    if (editingProject) {
+      updateMutation.mutate({ id: editingProject.id, data });
     } else {
       createMutation.mutate(data);
     }
@@ -52,21 +52,21 @@ export default function CustomerList() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Users size={20} className="text-blue-400" />
-          <h1 className="text-xl font-bold text-gray-100">Customers</h1>
-          {customers && (
-            <span className="text-sm text-gray-500">({customers.length})</span>
+          <FolderKanban size={20} className="text-blue-400" />
+          <h1 className="text-xl font-bold text-gray-100">Projects</h1>
+          {projects && (
+            <span className="text-sm text-gray-500">({projects.length})</span>
           )}
         </div>
         <button
           onClick={() => {
-            setEditingCustomer(null);
+            setEditingProject(null);
             setShowForm(true);
           }}
           className="btn-primary flex items-center gap-2 text-sm"
         >
           <Plus size={16} />
-          New Customer
+          New Project
         </button>
       </div>
 
@@ -75,7 +75,7 @@ export default function CustomerList() {
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
         <input
           type="text"
-          placeholder="Search customers..."
+          placeholder="Search projects..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="input pl-9 py-2 text-sm"
@@ -84,12 +84,12 @@ export default function CustomerList() {
 
       {/* Form */}
       {showForm && (
-        <CustomerForm
-          customer={editingCustomer}
+        <ProjectForm
+          project={editingProject}
           onSubmit={handleSubmit}
           onCancel={() => {
             setShowForm(false);
-            setEditingCustomer(null);
+            setEditingProject(null);
           }}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
         />
@@ -97,7 +97,7 @@ export default function CustomerList() {
 
       {/* Error */}
       {error && (
-        <div className="card p-6 text-center text-red-400">Failed to load customers</div>
+        <div className="card p-6 text-center text-red-400">Failed to load projects</div>
       )}
 
       {/* Loading */}
@@ -118,10 +118,10 @@ export default function CustomerList() {
       {/* Empty */}
       {filtered && filtered.length === 0 && !isLoading && (
         <div className="card p-12 text-center">
-          <Users size={32} className="mx-auto text-gray-600 mb-3" />
-          <p className="text-gray-400">No customers found</p>
+          <FolderKanban size={32} className="mx-auto text-gray-600 mb-3" />
+          <p className="text-gray-400">No projects found</p>
           <p className="text-sm text-gray-600 mt-1">
-            {search ? 'Try a different search term' : 'Create your first customer to get started'}
+            {search ? 'Try a different search term' : 'Create your first project to get started'}
           </p>
         </div>
       )}
@@ -129,35 +129,35 @@ export default function CustomerList() {
       {/* List */}
       {filtered && filtered.length > 0 && (
         <div className="space-y-2">
-          {filtered.map((customer) => (
+          {filtered.map((project) => (
             <Link
-              key={customer.id}
-              to={`/customers/${customer.id}`}
+              key={project.id}
+              to={`/projects/${project.id}`}
               className="card-hover p-4 flex items-center justify-between group block"
             >
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-lg bg-gray-700 flex items-center justify-center text-gray-300 font-semibold text-sm">
-                  {customer.name.charAt(0).toUpperCase()}
+                  {project.name.charAt(0).toUpperCase()}
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-gray-200 group-hover:text-blue-400 transition-colors">
-                    {customer.name}
+                    {project.name}
                   </h3>
                   <div className="flex items-center gap-3 mt-0.5">
-                    {customer.contactEmail && (
+                    {project.contactEmail && (
                       <span className="flex items-center gap-1 text-xs text-gray-500">
                         <Mail size={11} />
-                        {customer.contactEmail}
+                        {project.contactEmail}
                       </span>
                     )}
-                    {customer.contactPhone && (
+                    {project.contactPhone && (
                       <span className="flex items-center gap-1 text-xs text-gray-500">
                         <Phone size={11} />
-                        {customer.contactPhone}
+                        {project.contactPhone}
                       </span>
                     )}
                     <span className="text-xs text-gray-600">
-                      Added {formatRelativeTime(customer.createdAt)}
+                      Added {formatRelativeTime(project.createdAt)}
                     </span>
                   </div>
                 </div>

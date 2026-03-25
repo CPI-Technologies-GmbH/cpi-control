@@ -391,7 +391,7 @@ export default function ServiceDetail() {
             </span>
           </div>
           <div className="flex items-center gap-4 text-sm text-gray-400">
-            <span>{service.customerName || 'No customer'}</span>
+            <span>{service.projectName || 'No project'}</span>
             {isWebsite && service.url && (
               <>
                 <span className="text-gray-700">|</span>

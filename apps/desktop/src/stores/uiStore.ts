@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Environment, HostingType, ServiceStatus } from '@/types';
 
 interface ActiveFilters {
-  customerId?: string;
+  projectId?: string;
   environments: Environment[];
   hostingTypes: HostingType[];
   statuses: ServiceStatus[];
@@ -20,7 +20,7 @@ interface UIState {
 }
 
 const defaultFilters: ActiveFilters = {
-  customerId: undefined,
+  projectId: undefined,
   environments: [],
   hostingTypes: [],
   statuses: [],
