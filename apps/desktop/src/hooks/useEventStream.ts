@@ -1,5 +1,10 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { create } from 'zustand';
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from '@tauri-apps/plugin-notification';
 
 const BASE_URL =
   (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) ||
@@ -94,46 +99,44 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   clearAll: () => set({ notifications: [], unreadCount: 0 }),
 }));
 
-// ─── Browser Notification Permission ─────────────────────────────────────────
+// ─── Native Desktop Notifications (Tauri) ───────────────────────────────────
 
-function requestNotificationPermission() {
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
+const titleMap: Record<OpsEventType, string> = {
+  'deployment.started': 'Deployment Started',
+  'deployment.completed': 'Deployment Completed',
+  'deployment.failed': 'Deployment Failed',
+  'service.down': 'Service Down',
+  'service.up': 'Service Recovered',
+  'service.degraded': 'Service Degraded',
+};
+
+let notificationPermitted = false;
+
+async function initNotificationPermission() {
+  try {
+    notificationPermitted = await isPermissionGranted();
+    if (!notificationPermitted) {
+      const result = await requestPermission();
+      notificationPermitted = result === 'granted';
+    }
+  } catch {
+    // Not running in Tauri — fall back silently
+    notificationPermitted = false;
   }
 }
 
-function showBrowserNotification(event: OpsEvent) {
-  if (
-    'Notification' in window &&
-    Notification.permission === 'granted' &&
-    document.hidden
-  ) {
-    const titleMap: Record<OpsEventType, string> = {
-      'deployment.started': 'Deployment Started',
-      'deployment.completed': 'Deployment Completed',
-      'deployment.failed': 'Deployment Failed',
-      'service.down': 'Service Down',
-      'service.up': 'Service Recovered',
-      'service.degraded': 'Service Degraded',
-    };
+function showDesktopNotification(event: OpsEvent) {
+  if (!notificationPermitted) return;
 
-    const title = titleMap[event.type] || 'OpsBoard Event';
-    const body = event.serviceName + (event.details?.errorMessage ? ` - ${event.details.errorMessage}` : '');
-    const icon = event.type.startsWith('service.down')
-      ? undefined
-      : undefined;
+  const title = titleMap[event.type] || 'OpsBoard Event';
+  const body =
+    event.serviceName +
+    (event.details?.errorMessage ? ` — ${event.details.errorMessage}` : '');
 
-    const notification = new Notification(title, {
-      body,
-      icon,
-      tag: event.id,
-      requireInteraction: event.type === 'service.down',
-    });
-
-    notification.onclick = () => {
-      window.focus();
-      notification.close();
-    };
+  try {
+    sendNotification({ title, body, sound: 'default' });
+  } catch {
+    // Tauri not available or permission denied
   }
 }
 
@@ -166,7 +169,7 @@ export function useEventStream() {
         try {
           const event: OpsEvent = JSON.parse(e.data);
           addNotification(event);
-          showBrowserNotification(event);
+          showDesktopNotification(event);
         } catch {
           // Ignore parse errors
         }
@@ -183,7 +186,7 @@ export function useEventStream() {
   }, [addNotification]);
 
   useEffect(() => {
-    requestNotificationPermission();
+    initNotificationPermission();
     connect();
 
     return () => {

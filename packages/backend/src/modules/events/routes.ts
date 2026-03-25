@@ -46,4 +46,24 @@ export default async function eventStreamRoutes(app: FastifyInstance) {
 
     log.debug('SSE client connected');
   });
+
+  // POST /events/test - Emit a test event for notification testing
+  app.post('/events/test', async (request, reply) => {
+    const { type, serviceName, details } = request.body as {
+      type?: string;
+      serviceName?: string;
+      details?: Record<string, unknown>;
+    };
+
+    eventBus.publish(
+      (type as any) || 'service.down',
+      {
+        serviceName: serviceName || 'Test Service',
+        provider: 'manual',
+        details: details || { errorMessage: 'Test notification' },
+      },
+    );
+
+    return reply.send({ ok: true });
+  });
 }

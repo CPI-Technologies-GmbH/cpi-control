@@ -53,6 +53,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(BackendProcess(Mutex::new(None)))
         .setup(|app| {
             println!("OpsBoard Desktop starting...");
@@ -105,11 +106,13 @@ pub fn run() {
             if let tauri::WindowEvent::Destroyed = event {
                 // Kill backend when app closes
                 let state = window.state::<BackendProcess>();
-                if let Some(mut child) = state.0.lock().unwrap().take() {
+                let mut guard = state.0.lock().unwrap();
+                if let Some(mut child) = guard.take() {
                     println!("Shutting down backend (PID: {})...", child.id());
                     let _ = child.kill();
                     let _ = child.wait();
                 }
+                drop(guard);
             }
         })
         .invoke_handler(tauri::generate_handler![greet])

@@ -37,8 +37,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": {
-      "backend/**": "backend/"
-    }
+    "resources": [
+      "backend/*",
+      "backend/**/*"
+    ]
   }
 }
