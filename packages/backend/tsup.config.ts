@@ -7,6 +7,7 @@ export default defineConfig({
   outDir: 'dist',
   clean: true,
   sourcemap: false,
+  splitting: false, // Single output file for sidecar distribution
   // Native modules must be external — they can't be bundled
   external: [
     'better-sqlite3',

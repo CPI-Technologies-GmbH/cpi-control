@@ -292,11 +292,13 @@ describe('Inventory API - Services', () => {
     });
     expect(deleteRes.statusCode).toBe(204);
 
-    // Service should be gone (cascade)
+    // Service should still exist (customerId is set null, not cascade)
     const afterRes = await app.inject({
       method: 'GET',
       url: `/api/inventory/services/${service.id}`,
     });
-    expect(afterRes.statusCode).toBe(404);
+    expect(afterRes.statusCode).toBe(200);
+    const afterService = afterRes.json();
+    expect(afterService.customerId).toBeNull();
   });
 });

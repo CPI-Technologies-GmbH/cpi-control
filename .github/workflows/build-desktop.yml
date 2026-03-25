@@ -59,28 +59,37 @@ jobs:
       - name: Bundle backend
         shell: bash
         run: |
+          TAURI_BACKEND="apps/desktop/src-tauri/backend"
+          mkdir -p "$TAURI_BACKEND/node_modules"
+
+          # Build backend bundle
           cd packages/backend
           npx tsup
-          mkdir -p ../../../apps/desktop/src-tauri/backend/node_modules
-          cp dist/index.js ../../apps/desktop/src-tauri/backend/index.js
+
+          # Copy all dist files
+          cp dist/* "../../$TAURI_BACKEND/"
 
           # Copy native modules from pnpm store
+          cd ../..
           for mod in better-sqlite3 bindings file-uri-to-path keytar node-ssh ssh2 cpu-features; do
-            FOUND=$(find ../../node_modules/.pnpm -maxdepth 3 -path "*/$mod/package.json" -type f 2>/dev/null | head -1)
+            FOUND=$(find node_modules/.pnpm -maxdepth 3 -path "*/$mod/package.json" -type f 2>/dev/null | head -1)
             if [ -n "$FOUND" ]; then
               MOD_DIR=$(dirname "$FOUND")
               echo "Copying $mod from $MOD_DIR"
-              cp -r "$MOD_DIR" ../../apps/desktop/src-tauri/backend/node_modules/
+              cp -r "$MOD_DIR" "$TAURI_BACKEND/node_modules/"
             fi
           done
 
           # Create package.json for module resolution
-          echo '{"name":"opsboard-backend-bundle","version":"0.1.0","type":"module","private":true}' > ../../apps/desktop/src-tauri/backend/package.json
+          echo '{"name":"opsboard-backend-bundle","version":"0.1.0","type":"module","private":true}' > "$TAURI_BACKEND/package.json"
 
           # Copy drizzle migrations
-          if [ -d drizzle ]; then
-            cp -r drizzle ../../apps/desktop/src-tauri/backend/
+          if [ -d packages/backend/drizzle ]; then
+            cp -r packages/backend/drizzle "$TAURI_BACKEND/"
           fi
+
+          echo "Backend bundle contents:"
+          ls -la "$TAURI_BACKEND/"
 
       - name: Install Apple certificate (macOS)
         if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/')
