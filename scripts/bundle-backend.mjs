@@ -26,11 +26,12 @@ console.log('→ Preparing output directory...');
 if (existsSync(OUTPUT)) rmSync(OUTPUT, { recursive: true });
 mkdirSync(join(OUTPUT, 'node_modules'), { recursive: true });
 
-// 3. Copy bundled code
+// 3. Copy bundled code (skip test files)
 console.log('→ Copying bundle...');
 const distDir = join(BACKEND, 'dist');
 for (const file of readdirSync(distDir)) {
-  cpSync(join(distDir, file), join(OUTPUT, file));
+  if (file === '__tests__' || file === 'test' || file.endsWith('.test.js')) continue;
+  cpSync(join(distDir, file), join(OUTPUT, file), { recursive: true });
 }
 
 // 4. Copy native modules
