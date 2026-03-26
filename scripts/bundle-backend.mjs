@@ -6,7 +6,7 @@
  */
 import { execSync } from 'child_process';
 import { cpSync, mkdirSync, existsSync, writeFileSync, readdirSync, rmSync } from 'fs';
-import { join, dirname, resolve } from 'path';
+import { join, dirname, resolve, basename } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -99,7 +99,7 @@ function findNodeFiles(dir) {
   return results;
 }
 for (const nodeFile of findNodeFiles(join(OUTPUT, 'node_modules'))) {
-  const name = nodeFile.split('/').pop();
+  const name = basename(nodeFile);
   const dest = join(OUTPUT, 'build', 'Release', name);
   cpSync(nodeFile, dest);
   console.log(`  → ${name}`);
