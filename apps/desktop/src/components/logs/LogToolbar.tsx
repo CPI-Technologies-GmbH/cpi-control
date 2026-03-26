@@ -9,11 +9,7 @@ import type { LogSource, LogLevel, LogViewConfigData, Service } from '@/types';
 import type { LogColumn } from './ColumnSelector';
 import ColumnSelector from './ColumnSelector';
 import LogConfigManager from './LogConfigManager';
-import ServiceMultiSelect from './ServiceMultiSelect';
-
 // ─── Constants ──────────────────────────────────────────────────────────────
-
-const ALL_SOURCES: LogSource[] = ['kubernetes', 'vercel', 'github', 'agent', 'backend'];
 const ALL_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
 const TIME_RANGES = ['5m', '15m', '30m', '1h', '6h', '24h', '7d'] as const;
 
@@ -190,39 +186,7 @@ export default function LogToolbar({
 
       {/* Filter Bar */}
       <div className="card p-4 space-y-3">
-        {/* Service multi-select (hidden in embedded mode) */}
-        {!isEmbedded && (
-          <ServiceMultiSelect
-            services={services}
-            selectedIds={selectedServiceIds}
-            onChange={onSelectedServiceIdsChange}
-          />
-        )}
-
         <div className="flex items-center gap-4 flex-wrap">
-          {/* Source filters (hidden in embedded mode) */}
-          {!isEmbedded && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500 uppercase tracking-wide">Source</span>
-              <div className="flex flex-wrap gap-1.5">
-                {ALL_SOURCES.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => toggleSource(s)}
-                    className={clsx(
-                      'px-2 py-0.5 rounded text-xs font-medium transition-colors border',
-                      sources.includes(s)
-                        ? `${SOURCE_COLORS[s]} border-current/20`
-                        : 'bg-gray-800 text-gray-600 border-gray-700'
-                    )}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Level filters */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500 uppercase tracking-wide">Level</span>

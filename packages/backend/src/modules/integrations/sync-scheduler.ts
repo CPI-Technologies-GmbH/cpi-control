@@ -1335,6 +1335,8 @@ export class SyncScheduler {
 
     let count = 0;
     const now = new Date().toISOString();
+    // Only emit events for recent deployments (within last 10 min) to avoid notification spam on initial sync
+    const eventCutoff = Date.now() - 10 * 60 * 1000;
 
     // Filter for K8s: skip infrastructure deployments that were excluded from auto-discovery
     const k8sInfraPatterns = [
@@ -1398,8 +1400,10 @@ export class SyncScheduler {
             .where(eq(deploymentRecords.id, existing[0].id))
             .run();
 
-          // Emit deployment event if status changed
-          if (oldStatus !== dep.status) {
+          // Emit deployment event if status changed (only for recent deployments to avoid spam)
+          const depTs = dep.completedAt || dep.startedAt;
+          const depTime = depTs ? new Date(depTs).getTime() : 0;
+          if (oldStatus !== dep.status && depTime > eventCutoff) {
             const depEventType = this.mapDeploymentStatusToEvent(dep.status);
             if (depEventType) {
               eventBus.publish(depEventType, {
@@ -1446,25 +1450,29 @@ export class SyncScheduler {
             })
             .run();
 
-          // Emit deployment event for newly seen deployments
-          const depEventType = this.mapDeploymentStatusToEvent(dep.status);
-          if (depEventType) {
-            eventBus.publish(depEventType, {
-              serviceName,
-              serviceId: resolvedServiceId || undefined,
-              provider: dep.provider,
-              details: {
-                deploymentId: newId,
-                externalId: dep.externalId,
-                environment: dep.environment,
-                branch: dep.branch,
-                commitSha: dep.commitSha,
-                commitMessage: dep.commitMessage,
-                author: dep.author,
-                status: dep.status,
-                url: dep.url,
-              },
-            });
+          // Emit deployment event for newly seen deployments (only recent ones)
+          const newDepTs = dep.completedAt || dep.startedAt;
+          const newDepTime = newDepTs ? new Date(newDepTs).getTime() : 0;
+          if (newDepTime > eventCutoff) {
+            const depEventType = this.mapDeploymentStatusToEvent(dep.status);
+            if (depEventType) {
+              eventBus.publish(depEventType, {
+                serviceName,
+                serviceId: resolvedServiceId || undefined,
+                provider: dep.provider,
+                details: {
+                  deploymentId: newId,
+                  externalId: dep.externalId,
+                  environment: dep.environment,
+                  branch: dep.branch,
+                  commitSha: dep.commitSha,
+                  commitMessage: dep.commitMessage,
+                  author: dep.author,
+                  status: dep.status,
+                  url: dep.url,
+                },
+              });
+            }
           }
         }
         count++;

@@ -4,19 +4,20 @@ import clsx from 'clsx';
 import type { LogEntry, Service } from '@/types';
 import { getServiceBarColor } from './ServiceMultiSelect';
 
-type TimeBucket = '5m' | '15m' | '1h';
+/** Visible time window options — bars are always per-minute */
+type TimeWindow = '5m' | '15m' | '1h';
 
-const BUCKET_OPTIONS: { value: TimeBucket; label: string }[] = [
+const WINDOW_OPTIONS: { value: TimeWindow; label: string }[] = [
   { value: '5m', label: '5 min' },
   { value: '15m', label: '15 min' },
   { value: '1h', label: '1 hour' },
 ];
 
-function bucketMs(bucket: TimeBucket): number {
-  switch (bucket) {
-    case '5m': return 5 * 60 * 1000;
-    case '15m': return 15 * 60 * 1000;
-    case '1h': return 60 * 60 * 1000;
+function windowMinutes(w: TimeWindow): number {
+  switch (w) {
+    case '5m': return 5;
+    case '15m': return 15;
+    case '1h': return 60;
   }
 }
 
@@ -43,74 +44,57 @@ export default function LogVolumeChart({
   onClickServiceSegment,
 }: LogVolumeChartProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [bucket, setBucket] = useState<TimeBucket>('5m');
+  const [window, setWindow] = useState<TimeWindow>('5m');
 
   const bucketData = useMemo(() => {
-    if (entries.length === 0) return [];
+    const mins = windowMinutes(window);
+    const bucketMs = 60 * 1000; // always 1-minute buckets
+    const now = Date.now();
 
-    const ms = bucketMs(bucket);
+    // Align to minute boundaries
+    const endTime = Math.ceil(now / bucketMs) * bucketMs;
+    const startTime = endTime - mins * bucketMs;
 
-    // Build a map serviceId -> service name from metadata
-    const serviceNameMap = new Map<string, string>();
-    services.forEach((s) => serviceNameMap.set(s.id, s.name));
-
-    // Determine time range
-    const timestamps = entries.map((e) => new Date(e.timestamp).getTime());
-    const maxTime = Math.max(...timestamps);
-    const minTime = Math.min(...timestamps);
-
-    // Create buckets covering the full range
-    const bucketStart = Math.floor(minTime / ms) * ms;
-    const bucketEnd = Math.ceil(maxTime / ms) * ms;
-    const numBuckets = Math.min(Math.ceil((bucketEnd - bucketStart) / ms) + 1, 60);
-
-    // Build service set from entries metadata — fall back to source as identifier
-    const serviceIds = new Set<string>();
-    entries.forEach((e) => {
-      const svcId = (e.metadata?.serviceId as string) || `source:${e.source}`;
-      serviceIds.add(svcId);
-    });
+    // Pre-compute entry timestamps
+    const entryTimes = entries.map((e) => ({
+      ts: new Date(e.timestamp).getTime(),
+      serviceId: (e.metadata?.serviceId as string) || `source:${e.source}`,
+    }));
 
     const result: BucketData[] = [];
-    for (let i = 0; i < numBuckets; i++) {
-      const t = bucketStart + i * ms;
-      const bucketEntries = entries.filter((e) => {
-        const ts = new Date(e.timestamp).getTime();
-        return ts >= t && ts < t + ms;
-      });
+    for (let t = startTime; t < endTime; t += bucketMs) {
+      const tEnd = t + bucketMs;
 
       const segmentCounts = new Map<string, number>();
-      bucketEntries.forEach((e) => {
-        const svcId = (e.metadata?.serviceId as string) || `source:${e.source}`;
-        segmentCounts.set(svcId, (segmentCounts.get(svcId) || 0) + 1);
-      });
+      let total = 0;
+      for (const e of entryTimes) {
+        if (e.ts >= t && e.ts < tEnd) {
+          segmentCounts.set(e.serviceId, (segmentCounts.get(e.serviceId) || 0) + 1);
+          total++;
+        }
+      }
 
       const segments = Array.from(segmentCounts.entries())
         .map(([serviceId, count]) => ({ serviceId, count }))
         .sort((a, b) => a.serviceId.localeCompare(b.serviceId));
 
       const date = new Date(t);
-      const label =
-        bucket === '1h'
-          ? `${String(date.getHours()).padStart(2, '0')}:00`
-          : `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+      const label = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 
-      result.push({
-        time: t,
-        label,
-        segments,
-        total: bucketEntries.length,
-      });
+      result.push({ time: t, label, segments, total });
     }
 
     return result;
-  }, [entries, services, bucket]);
+  }, [entries, window]);
 
   const maxTotal = useMemo(() => {
     return Math.max(1, ...bucketData.map((b) => b.total));
   }, [bucketData]);
 
   if (entries.length === 0) return null;
+
+  // Show fewer axis labels when there are many buckets
+  const labelInterval = bucketData.length > 30 ? 10 : bucketData.length > 15 ? 5 : bucketData.length > 8 ? 2 : 1;
 
   return (
     <div className="card flex-shrink-0 overflow-hidden">
@@ -124,15 +108,15 @@ export default function LogVolumeChart({
         <span className="text-xs font-medium text-gray-300">Log Volume</span>
         <span className="text-[10px] text-gray-600 ml-1">({entries.length} entries)</span>
 
-        {/* Bucket selector — stop propagation so it doesn't collapse */}
+        {/* Window selector */}
         <div className="ml-auto flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          {BUCKET_OPTIONS.map((opt) => (
+          {WINDOW_OPTIONS.map((opt) => (
             <button
               key={opt.value}
-              onClick={() => setBucket(opt.value)}
+              onClick={() => setWindow(opt.value)}
               className={clsx(
                 'px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors',
-                bucket === opt.value
+                window === opt.value
                   ? 'bg-blue-500/20 text-blue-400'
                   : 'text-gray-600 hover:text-gray-400'
               )}
@@ -177,34 +161,31 @@ export default function LogVolumeChart({
                   })}
                 </div>
 
-                {/* Tooltip */}
-                {b.total > 0 && (
-                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                    <div className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] whitespace-nowrap shadow-lg">
-                      <div className="text-gray-300 font-medium">{b.label}</div>
-                      <div className="text-gray-500">{b.total} entries</div>
-                    </div>
-                  </div>
+                {/* Empty minute indicator */}
+                {b.total === 0 && (
+                  <div className="w-full h-[1px] bg-gray-800 rounded" />
                 )}
+
+                {/* Tooltip */}
+                <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                  <div className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] whitespace-nowrap shadow-lg">
+                    <div className="text-gray-300 font-medium">{b.label}</div>
+                    <div className="text-gray-500">{b.total} entries</div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
 
           {/* Time axis labels */}
-          <div className="flex justify-between mt-1">
-            {bucketData.length > 0 && (
-              <>
-                <span className="text-[9px] text-gray-600">{bucketData[0].label}</span>
-                {bucketData.length > 2 && (
-                  <span className="text-[9px] text-gray-600">
-                    {bucketData[Math.floor(bucketData.length / 2)].label}
-                  </span>
+          <div className="flex mt-1">
+            {bucketData.map((b, i) => (
+              <div key={i} className="flex-1 text-center">
+                {i % labelInterval === 0 && (
+                  <span className="text-[9px] text-gray-600">{b.label}</span>
                 )}
-                <span className="text-[9px] text-gray-600">
-                  {bucketData[bucketData.length - 1].label}
-                </span>
-              </>
-            )}
+              </div>
+            ))}
           </div>
         </div>
       )}
