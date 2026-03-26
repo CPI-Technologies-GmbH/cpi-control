@@ -125,16 +125,33 @@ async function initNotificationPermission() {
   }
 }
 
+/** macOS system sound per severity: soft for info, alert for failures */
+const soundMap: Record<OpsEventType, string> = {
+  'deployment.started': 'Pop',
+  'deployment.completed': 'Glass',
+  'deployment.failed': 'Sosumi',
+  'service.down': 'Basso',
+  'service.up': 'Pop',
+  'service.degraded': 'Funk',
+};
+
 function showDesktopNotification(event: OpsEvent) {
   if (!notificationPermitted) return;
 
-  const title = titleMap[event.type] || 'OpsBoard Event';
-  const body =
-    event.serviceName +
-    (event.details?.errorMessage ? ` — ${event.details.errorMessage}` : '');
+  const title = titleMap[event.type] || 'CPI-Control';
+  const parts: string[] = [event.serviceName];
+  if (event.details?.branch) parts.push(`(${event.details.branch})`);
+  if (event.details?.commitMessage) {
+    const msg = String(event.details.commitMessage);
+    parts.push(`— ${msg.length > 60 ? msg.slice(0, 57) + '...' : msg}`);
+  } else if (event.details?.errorMessage) {
+    parts.push(`— ${event.details.errorMessage}`);
+  }
+  const body = parts.join(' ');
+  const sound = soundMap[event.type] || 'default';
 
   try {
-    sendNotification({ title, body, sound: 'default' });
+    sendNotification({ title, body, sound });
   } catch {
     // Tauri not available or permission denied
   }

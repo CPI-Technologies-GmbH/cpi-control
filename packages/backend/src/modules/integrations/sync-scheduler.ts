@@ -317,7 +317,14 @@ export class SyncScheduler {
     log.info({ jobCount: this.jobs.size }, 'Started all sync jobs');
 
     // Run initial sync in background (don't block server startup)
-    const enabledIntegrations = integrations.filter(i => i.enabled);
+    // Infrastructure providers first so K8s services exist before GitHub variant detection
+    const providerOrder: Record<string, number> = {
+      kubernetes: 0, digitalocean: 1, vercel: 2,
+      semaphore: 3, github: 4,
+    };
+    const enabledIntegrations = integrations
+      .filter(i => i.enabled)
+      .sort((a, b) => (providerOrder[a.provider] ?? 3) - (providerOrder[b.provider] ?? 3));
     if (enabledIntegrations.length > 0) {
       this.runInitialSyncs(enabledIntegrations).catch(err => {
         log.error({ error: err.message }, 'Initial sync batch failed');
@@ -1364,9 +1371,14 @@ export class SyncScheduler {
         // Auto-resolve service ID for linking
         const resolvedServiceId = this.resolveServiceId(dep);
 
-        // Resolve service name for event emission
+        // Resolve service name for event emission — prefer actual service name over IDs
         const meta = dep.metadata as Record<string, unknown> | null | undefined;
-        const serviceName = (meta?.projectName as string) || (meta?.deploymentName as string) || dep.externalId;
+        let serviceName = (meta?.projectName as string) || (meta?.deploymentName as string) || '';
+        if (!serviceName && resolvedServiceId) {
+          const svc = this.db.select({ name: websites.name }).from(websites).where(eq(websites.id, resolvedServiceId)).get();
+          if (svc) serviceName = svc.name;
+        }
+        if (!serviceName) serviceName = dep.externalId;
 
         if (existing.length > 0) {
           const oldStatus = existing[0].status;
@@ -1570,6 +1582,15 @@ export class SyncScheduler {
   async resyncAll(): Promise<{ synced: number; errors: string[] }> {
     const integrations = await integrationService.listIntegrations(this.db);
     const enabled = integrations.filter(i => i.enabled);
+
+    // Sync infrastructure providers first (K8s, DO, Vercel) so their services exist
+    // before GitHub sync runs its K8s variant detection.
+    const providerOrder: Record<string, number> = {
+      kubernetes: 0, digitalocean: 1, vercel: 2,
+      semaphore: 3, github: 4,
+    };
+    enabled.sort((a, b) => (providerOrder[a.provider] ?? 3) - (providerOrder[b.provider] ?? 3));
+
     let synced = 0;
     const errors: string[] = [];
 
