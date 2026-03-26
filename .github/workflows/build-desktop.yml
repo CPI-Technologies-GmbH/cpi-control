@@ -58,6 +58,7 @@ jobs:
 
       - name: Inject version from tag
         if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           echo "Injecting version: $VERSION"
@@ -65,6 +66,7 @@ jobs:
 
       - name: Inject version from run number (dev builds)
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        shell: bash
         run: |
           VERSION="0.1.${{ github.run_number }}"
           echo "Injecting version: $VERSION"
