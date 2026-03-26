@@ -273,7 +273,20 @@ export class SyncScheduler {
       }
     }
 
-    // Special handling for kubernetes: parse kubeconfig to extract apiServer, token, caCert, clientCert, clientKey
+    // Special handling for kubernetes: if no plain 'kubeconfig' secret, try named kubeconfigs (kubeconfig:*)
+    if (provider === 'kubernetes' && !resolved.kubeconfig && this.secretStore) {
+      const allKeys = await this.secretStore.list();
+      const namedKey = allKeys.find((k) => k.startsWith('kubeconfig:'));
+      if (namedKey) {
+        const value = await this.secretStore.get(namedKey);
+        if (value) {
+          resolved.kubeconfig = value;
+          log.info({ key: namedKey }, 'Using named kubeconfig');
+        }
+      }
+    }
+
+    // Parse kubeconfig to extract apiServer, token, caCert, clientCert, clientKey
     if (provider === 'kubernetes' && typeof resolved.kubeconfig === 'string' && !resolved.apiServer) {
       const kubeconfigContent = resolved.kubeconfig;
       const parsed = parseKubeconfig(kubeconfigContent);

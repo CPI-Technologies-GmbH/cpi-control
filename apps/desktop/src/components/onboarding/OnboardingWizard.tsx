@@ -19,7 +19,8 @@ export default function OnboardingWizard() {
   const completeMutation = useMutation({
     mutationFn: () => settings.update({ onboardingCompleted: 'true' } as any),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['settings'] });
+      // Update cache immediately so OnboardingGuard sees the new value
+      qc.setQueryData(['settings'], (old: any) => ({ ...old, onboardingCompleted: true }));
       navigate('/');
     },
   });

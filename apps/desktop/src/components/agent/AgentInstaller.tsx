@@ -25,6 +25,7 @@ export default function AgentInstaller() {
     e.preventDefault();
     if (!validate()) return;
     installMutation.mutate({
+      name: host.trim(),
       host: host.trim(),
       username: username.trim(),
       sshKeyPath: sshKeyPath.trim() || undefined,

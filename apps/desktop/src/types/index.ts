@@ -405,6 +405,7 @@ export interface SecretStatus {
 }
 
 export interface AgentInstallRequest {
+  name: string;
   host: string;
   username: string;
   sshKeyPath?: string;

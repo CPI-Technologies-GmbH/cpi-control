@@ -1,9 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { integrations as intApi } from '@/lib/api';
 import { ProviderIcon } from '@/components/icons/ProviderIcons';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
-import clsx from 'clsx';
+
+const PROVIDER_NAMES: Record<string, string> = {
+  github: 'GitHub',
+  vercel: 'Vercel',
+  kubernetes: 'Kubernetes',
+  digitalocean: 'DigitalOcean',
+  semaphore: 'Semaphore',
+};
 
 interface SyncStepProps {
   configuredProviders: string[];
@@ -13,6 +20,7 @@ interface SyncStepProps {
 export default function SyncStep({ configuredProviders, onComplete }: SyncStepProps) {
   const [elapsed, setElapsed] = useState(0);
   const [autoAdvanced, setAutoAdvanced] = useState(false);
+  const ensuredRef = useRef(false);
 
   // If no providers configured, auto-advance immediately
   useEffect(() => {
@@ -20,6 +28,33 @@ export default function SyncStep({ configuredProviders, onComplete }: SyncStepPr
       onComplete();
     }
   }, [configuredProviders, onComplete]);
+
+  // Ensure integrations exist for all configured providers, then trigger sync
+  useEffect(() => {
+    if (ensuredRef.current || configuredProviders.length === 0) return;
+    ensuredRef.current = true;
+
+    (async () => {
+      const existing = await intApi.list();
+      for (const providerId of configuredProviders) {
+        const found = existing.find((c) => c.provider === providerId);
+        if (found) {
+          intApi.sync(found.id).catch(() => {});
+        } else {
+          try {
+            const created = await intApi.create({
+              provider: providerId as any,
+              name: PROVIDER_NAMES[providerId] || providerId,
+              enabled: true,
+            });
+            intApi.sync(created.id).catch(() => {});
+          } catch {
+            // May already exist
+          }
+        }
+      }
+    })();
+  }, [configuredProviders]);
 
   const { data: configs } = useQuery({
     queryKey: ['integrations'],
@@ -80,7 +115,9 @@ export default function SyncStep({ configuredProviders, onComplete }: SyncStepPr
             <div className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center shrink-0">
               <ProviderIcon provider={providerId} size={18} />
             </div>
-            <span className="text-sm text-gray-200 capitalize flex-1 text-left">{providerId}</span>
+            <span className="text-sm text-gray-200 flex-1 text-left">
+              {PROVIDER_NAMES[providerId] || providerId}
+            </span>
             {status === 'syncing' && <Loader2 size={16} className="text-blue-400 animate-spin" />}
             {status === 'done' && <CheckCircle2 size={16} className="text-emerald-400" />}
             {status === 'error' && <AlertCircle size={16} className="text-amber-400" />}
