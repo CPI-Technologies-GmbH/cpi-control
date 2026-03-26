@@ -1,0 +1,144 @@
+name: Build & Release Agent
+
+on:
+  push:
+    branches: [main]
+    tags: ['agent-*']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-agent:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-latest
+          - goos: darwin
+            goarch: amd64
+            runner: macos-latest
+          - goos: darwin
+            goarch: arm64
+            runner: macos-latest
+
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/agent-* ]]; then
+            echo "version=${GITHUB_REF_NAME#agent-}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build agent
+        working-directory: apps/monitoring-agent
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          BINARY_NAME="opsboard-agent-${{ matrix.goos }}-${{ matrix.goarch }}"
+          go build -ldflags "-X main.Version=${{ steps.version.outputs.version }}" -o "bin/${BINARY_NAME}" ./cmd/agent
+          echo "Built ${BINARY_NAME} v${{ steps.version.outputs.version }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opsboard-agent-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: apps/monitoring-agent/bin/opsboard-agent-*
+
+  # Create agent release for tags
+  release-agent:
+    if: startsWith(github.ref, 'refs/tags/agent-')
+    needs: build-agent
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f -name 'opsboard-agent-*' -exec cp {} release-assets/ \;
+          chmod +x release-assets/*
+          ls -la release-assets/
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#agent-}"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Monitoring Agent $VERSION" \
+            --notes "## Monitoring Agent v${VERSION}
+
+          ### Installation
+          \`\`\`bash
+          curl -fsSL https://github.com/CPI-Technologies-GmbH/cpi-control/releases/download/${GITHUB_REF_NAME}/opsboard-agent-linux-amd64 -o /usr/local/bin/opsboard-agent
+          chmod +x /usr/local/bin/opsboard-agent
+          \`\`\`
+
+          See [agent setup docs](https://github.com/CPI-Technologies-GmbH/cpi-control#monitoring-agent) for configuration." \
+            release-assets/*
+
+  # Rolling latest for agent on main push
+  release-agent-latest:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build-agent
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f -name 'opsboard-agent-*' -exec cp {} release-assets/ \;
+          chmod +x release-assets/*
+          ls -la release-assets/
+
+      - name: Delete existing agent-latest release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete agent-latest --yes --cleanup-tag 2>/dev/null || true
+
+      - name: Create agent-latest release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create agent-latest \
+            --title "Monitoring Agent Latest ($(date -u +%Y-%m-%d))" \
+            --notes "Automated agent build from \`main\` branch.
+
+          **Commit:** ${{ github.sha }}
+          **Date:** $(date -u +%Y-%m-%d\ %H:%M\ UTC)" \
+            --prerelease \
+            release-assets/*

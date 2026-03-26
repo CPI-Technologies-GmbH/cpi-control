@@ -311,7 +311,7 @@ export class SyncScheduler {
     const integrations = await integrationService.listIntegrations(this.db);
     for (const integration of integrations) {
       if (integration.enabled) {
-        this.scheduleJob(integration.id, integration.provider, (integration.syncIntervalSeconds || 300) * 1000);
+        this.scheduleJob(integration.id, integration.provider, (integration.syncIntervalSeconds || 10) * 1000);
       }
     }
     log.info({ jobCount: this.jobs.size }, 'Started all sync jobs');
@@ -701,11 +701,39 @@ export class SyncScheduler {
           .where(eq(websites.name, proj.name))
           .all();
 
+        // Cross-reference by infrastructure binding if name match didn't find service
+        // This handles cases like Vercel project "powersetter" matching service "powersetter.ai"
+        if (existing.length === 0 && (provider === 'vercel' || provider === 'kubernetes')) {
+          const bindingExternalId = provider === 'vercel'
+            ? (proj.metadata.vercelProjectId as string) || proj.name
+            : `${(proj.metadata.namespace as string) || 'default'}/${proj.name}`;
+          const byBinding = this.db
+            .select({ websiteId: infrastructureBindings.websiteId })
+            .from(infrastructureBindings)
+            .where(
+              and(
+                eq(infrastructureBindings.provider, provider),
+                eq(infrastructureBindings.externalId, bindingExternalId)
+              )
+            )
+            .all();
+          if (byBinding.length > 0) {
+            const svc2 = this.db
+              .select({ id: websites.id, hostingType: websites.hostingType, type: websites.type, url: websites.url })
+              .from(websites)
+              .where(eq(websites.id, byBinding[0].websiteId))
+              .all();
+            if (svc2.length > 0) {
+              existing.push(svc2[0]);
+            }
+          }
+        }
+
         if (existing.length > 0) {
           // Update existing service if hosting info or URL has changed
           // NOTE: Never overwrite 'type' — it may have been manually corrected
           const svc = existing[0];
-          const hostingChanged = svc.hostingType !== hostingType;
+          const hostingChanged = svc.hostingType !== hostingType && hostingType !== 'other';
           const urlChanged = proj.urls[0] && svc.url !== proj.urls[0];
 
           // Fix A: Correct stale K8s infra binding namespace
@@ -785,6 +813,44 @@ export class SyncScheduler {
             log.info({ serviceId: svc.id, name: proj.name, hostingType, hasIngress: proj.hasIngress }, 'Updated service hosting info');
           }
           continue;
+        }
+
+        // For GitHub: skip repos where we can't determine a hosting target and workflows
+        // are CI-only (no deployment). These are monorepos, CI pipelines, or tools — not deployable services.
+        if ((provider === 'github' || provider === 'github_actions') && hostingType === 'other') {
+          const allWfLower = proj.workflowNames.map(w => w.toLowerCase()).join(' ');
+          const hasDeployWorkflow = allWfLower.includes('deploy') || allWfLower.includes('release')
+            || allWfLower.includes('publish') || allWfLower.includes('push')
+            || allWfLower.includes('migrate');
+          if (!hasDeployWorkflow) {
+            log.debug({ repo: proj.repoFullName, workflows: proj.workflowNames }, 'Skipping GitHub repo — CI-only workflows, no deploy target');
+            continue;
+          }
+        }
+
+        // For GitHub/Semaphore: check if this is a monorepo (multiple services share the same repo).
+        // If so, skip standalone service creation — the individual sub-services already exist.
+        if ((provider === 'github' || provider === 'github_actions' || provider === 'semaphore') && proj.repoFullName) {
+          const repoParts = proj.repoFullName.split('/');
+          if (repoParts.length >= 2) {
+            const repoOwner = repoParts[repoParts.length - 2];
+            const repoName = repoParts[repoParts.length - 1];
+            const repoBindingCount = this.db
+              .select({ id: repositoryBindings.id })
+              .from(repositoryBindings)
+              .where(
+                and(
+                  eq(repositoryBindings.provider, 'github'),
+                  eq(repositoryBindings.owner, repoOwner),
+                  eq(repositoryBindings.repo, repoName)
+                )
+              )
+              .all();
+            if (repoBindingCount.length > 1) {
+              log.debug({ repo: proj.repoFullName, bindingCount: repoBindingCount.length }, 'Skipping monorepo — multiple services already bound to this repo');
+              continue;
+            }
+          }
         }
 
         // For GitHub/Semaphore: check if K8s services already exist for this repo.
@@ -915,7 +981,7 @@ export class SyncScheduler {
    * Tries deployment_sources, infrastructure_bindings, then repository_bindings.
    * Returns the websiteId (service ID) or null if no match is found.
    */
-  private resolveServiceId(dep: { provider: string; externalId: string; metadata?: Record<string, unknown> | null }): string | null {
+  private resolveServiceId(dep: { provider: string; externalId: string; branch?: string; metadata?: Record<string, unknown> | null }): string | null {
     // Strategy 1: Match by deployment_sources (provider + externalProjectId)
     try {
       const sourceMatches = this.db
@@ -1033,9 +1099,17 @@ export class SyncScheduler {
           log.debug({ owner, repo, serviceId: repoMatches[0].websiteId }, 'Resolved service via repository_bindings');
           return repoMatches[0].websiteId;
         }
-        // Multiple matches = monorepo, skip to next strategy
-        if (repoMatches.length > 1) {
-          log.debug({ owner, repo, matches: repoMatches.length }, 'Multiple repo matches (monorepo), skipping');
+        // Multiple matches = monorepo/multi-env — disambiguate using branch
+        if (repoMatches.length > 1 && dep.branch) {
+          const branchSuffix = `-${dep.branch}`;
+          for (const match of repoMatches) {
+            const svcName = this.db.select({ name: websites.name }).from(websites).where(eq(websites.id, match.websiteId)).all();
+            if (svcName.length > 0 && svcName[0].name.endsWith(branchSuffix)) {
+              log.debug({ owner, repo, branch: dep.branch, serviceId: match.websiteId }, 'Resolved service via repository_bindings + branch disambiguation');
+              return match.websiteId;
+            }
+          }
+          log.debug({ owner, repo, branch: dep.branch, matches: repoMatches.length }, 'Multiple repo matches, branch disambiguation failed');
         }
       } catch (err: any) {
         log.debug({ error: err.message }, 'Error checking repository_bindings');
@@ -1047,6 +1121,7 @@ export class SyncScheduler {
     if (repoFullName && repoFullName.includes('/')) {
       const repoName = repoFullName.split('/').pop()!;
       try {
+        // Try exact repo name first
         const nameMatches = this.db
           .select({ id: websites.id })
           .from(websites)
@@ -1055,6 +1130,21 @@ export class SyncScheduler {
 
         if (nameMatches.length > 0) {
           return nameMatches[0].id;
+        }
+
+        // Try repoName-branch (e.g. "vacabee-frontend-dev" for repo "vacabee-frontend" branch "dev")
+        if (dep.branch) {
+          const nameWithBranch = `${repoName}-${dep.branch}`;
+          const branchMatches = this.db
+            .select({ id: websites.id })
+            .from(websites)
+            .where(eq(websites.name, nameWithBranch))
+            .all();
+
+          if (branchMatches.length > 0) {
+            log.debug({ repoName, branch: dep.branch, serviceId: branchMatches[0].id }, 'Resolved service via repo name + branch');
+            return branchMatches[0].id;
+          }
         }
       } catch (err: any) {
         log.debug({ error: err.message }, 'Error checking by repo name');

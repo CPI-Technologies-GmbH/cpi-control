@@ -13,6 +13,7 @@ import { KubernetesAdapter } from './providers/kubernetes/adapter.js';
 import { DigitalOceanAdapter } from './providers/digitalocean/adapter.js';
 import { SemaphoreAdapter } from './providers/semaphore/adapter.js';
 import { LogCollector } from './modules/logs/collector.js';
+import { IncidentDetector } from './modules/incidents/service.js';
 
 // Route imports
 import inventoryRoutes from './modules/inventory/routes.js';
@@ -145,8 +146,12 @@ export async function buildApp(config: ServerConfig = {}): Promise<FastifyInstan
   const heartbeatMonitor = new HeartbeatMonitor(db);
   app.decorate('heartbeatMonitor', heartbeatMonitor);
 
-  // Set up health checker
-  const healthChecker = new HealthChecker(db);
+  // Set up health checker with incident detection
+  const incidentDetector = new IncidentDetector(db);
+  const healthChecker = new HealthChecker(db, {
+    incidentDetector,
+    notificationService,
+  });
   app.decorate('healthChecker', healthChecker);
 
   // Set up log collector for background K8s log collection
@@ -218,7 +223,7 @@ export async function buildApp(config: ServerConfig = {}): Promise<FastifyInstan
         name: info.name,
         enabled: true,
         config: {},
-        syncIntervalSeconds: 300,
+        syncIntervalSeconds: 10,
         createdAt: now,
         updatedAt: now,
       }).run();
@@ -244,6 +249,7 @@ export async function buildApp(config: ServerConfig = {}): Promise<FastifyInstan
     syncScheduler.stopAll();
     heartbeatMonitor.stop();
     healthChecker.stop();
+    await notificationService.flushAll();
     log.info('Cleanup complete');
   });
 

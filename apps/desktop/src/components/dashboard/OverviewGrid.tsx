@@ -1,185 +1,67 @@
-import { useState } from 'react';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useServices } from '@/hooks/useServices';
-import { useUIStore } from '@/stores/uiStore';
+import { projects as projectsApi } from '@/lib/api';
 import MetricsSummary from './MetricsSummary';
-import StatusCard, { StatusCardSkeleton } from './StatusCard';
+import AlertSection from './AlertSection';
+import ProjectCard from './ProjectCard';
 import DashboardIncidentList from './IncidentList';
-import { Filter, X, Search } from 'lucide-react';
-import clsx from 'clsx';
-import type { Environment, HostingType, ServiceStatus, ServiceFilters } from '@/types';
-
-const environments: Environment[] = ['production', 'staging', 'development'];
-const hostingTypes: HostingType[] = ['vercel', 'kubernetes', 'digitalocean', 'ovh', 'github', 'aws', 'docker', 'other'];
-const statuses: ServiceStatus[] = ['healthy', 'degraded', 'down', 'unknown'];
-
-function FilterChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={clsx(
-        'badge cursor-pointer transition-colors',
-        active
-          ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-          : 'bg-gray-800 text-gray-400 border-gray-700 hover:border-gray-600'
-      )}
-    >
-      {label}
-    </button>
-  );
-}
+import type { Service, Project } from '@/types';
 
 export default function OverviewGrid() {
-  const activeFilters = useUIStore((s) => s.activeFilters);
-  const setFilter = useUIStore((s) => s.setFilter);
-  const resetFilters = useUIStore((s) => s.resetFilters);
-  const [showFilters, setShowFilters] = useState(false);
+  const { data: services = [], isLoading, error } = useServices();
+  const { data: projectsList = [] } = useQuery({
+    queryKey: ['projects'],
+    queryFn: projectsApi.list,
+    staleTime: 60_000,
+  });
 
-  const apiFilters: ServiceFilters = {
-    ...(activeFilters.projectId && { projectId: activeFilters.projectId }),
-    ...(activeFilters.environments.length > 0 && { environments: activeFilters.environments }),
-    ...(activeFilters.hostingTypes.length > 0 && { hostingTypes: activeFilters.hostingTypes }),
-    ...(activeFilters.statuses.length > 0 && { statuses: activeFilters.statuses }),
-    ...(activeFilters.hasOpenIncident !== undefined && {
-      hasOpenIncident: activeFilters.hasOpenIncident,
-    }),
-    ...(activeFilters.search && { search: activeFilters.search }),
-  };
+  // Group services by project
+  const projectGroups = useMemo(() => {
+    const projectMap = new Map<string, Project>();
+    for (const p of projectsList) {
+      projectMap.set(p.id, p);
+    }
 
-  const { data: services, isLoading, error } = useServices(apiFilters);
+    const groups: { project: Project; services: Service[] }[] = [];
+    const byProject = new Map<string, Service[]>();
 
-  const hasActiveFilters =
-    activeFilters.environments.length > 0 ||
-    activeFilters.hostingTypes.length > 0 ||
-    activeFilters.statuses.length > 0 ||
-    activeFilters.search !== '' ||
-    activeFilters.hasOpenIncident !== undefined;
+    for (const svc of services) {
+      const projectId = svc.projectId;
+      if (!projectId) continue;
+      if (!byProject.has(projectId)) byProject.set(projectId, []);
+      byProject.get(projectId)!.push(svc);
+    }
 
-  function toggleArrayFilter<T>(
-    key: 'environments' | 'hostingTypes' | 'statuses',
-    value: T
-  ) {
-    const current = activeFilters[key] as T[];
-    const next = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
-    setFilter(key, next as typeof activeFilters[typeof key]);
-  }
+    for (const [projectId, svcs] of byProject) {
+      const project = projectMap.get(projectId);
+      if (project) {
+        groups.push({ project, services: svcs });
+      }
+    }
+
+    // Sort: projects with issues first, then alphabetically
+    groups.sort((a, b) => {
+      const aIssues = a.services.filter((s) => s.status === 'down' || s.status === 'degraded').length;
+      const bIssues = b.services.filter((s) => s.status === 'down' || s.status === 'degraded').length;
+      if (aIssues !== bIssues) return bIssues - aIssues;
+      return a.project.name.localeCompare(b.project.name);
+    });
+
+    return groups;
+  }, [services, projectsList]);
 
   return (
     <div className="space-y-6">
       {/* Metrics bar */}
       <MetricsSummary />
 
-      {/* Filter bar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-            <input
-              type="text"
-              placeholder="Filter services..."
-              value={activeFilters.search}
-              onChange={(e) => setFilter('search', e.target.value)}
-              className="input pl-9 py-1.5 text-sm w-64"
-            />
-          </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={clsx(
-              'btn-ghost flex items-center gap-2 text-sm py-1.5',
-              showFilters && 'bg-gray-800'
-            )}
-          >
-            <Filter size={16} />
-            Filters
-            {hasActiveFilters && (
-              <span className="w-2 h-2 rounded-full bg-blue-500" />
-            )}
-          </button>
-          {hasActiveFilters && (
-            <button
-              onClick={resetFilters}
-              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
-            >
-              <X size={14} />
-              Clear
-            </button>
-          )}
-        </div>
-        <p className="text-sm text-gray-500">
-          {services ? `${services.length} services` : ''}
-        </p>
-      </div>
-
-      {/* Filter panel */}
-      {showFilters && (
-        <div className="card p-4 space-y-4">
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Status</p>
-            <div className="flex flex-wrap gap-2">
-              {statuses.map((s) => (
-                <FilterChip
-                  key={s}
-                  label={s}
-                  active={activeFilters.statuses.includes(s)}
-                  onClick={() => toggleArrayFilter('statuses', s)}
-                />
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Environment</p>
-            <div className="flex flex-wrap gap-2">
-              {environments.map((e) => (
-                <FilterChip
-                  key={e}
-                  label={e}
-                  active={activeFilters.environments.includes(e)}
-                  onClick={() => toggleArrayFilter('environments', e)}
-                />
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Hosting</p>
-            <div className="flex flex-wrap gap-2">
-              {hostingTypes.map((h) => (
-                <FilterChip
-                  key={h}
-                  label={h}
-                  active={activeFilters.hostingTypes.includes(h)}
-                  onClick={() => toggleArrayFilter('hostingTypes', h)}
-                />
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={activeFilters.hasOpenIncident ?? false}
-                onChange={(e) =>
-                  setFilter('hasOpenIncident', e.target.checked ? true : undefined)
-                }
-                className="rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500/50"
-              />
-              Has open incident
-            </label>
-          </div>
-        </div>
-      )}
+      {/* Alert Section — services needing attention */}
+      <AlertSection services={services} />
 
       {/* Main grid + sidebar */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Service cards */}
+        {/* Project Cards */}
         <div className="lg:col-span-3">
           {error && (
             <div className="card p-8 text-center text-red-400">
@@ -189,33 +71,39 @@ export default function OverviewGrid() {
 
           {isLoading && (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {Array.from({ length: 9 }).map((_, i) => (
-                <StatusCardSkeleton key={i} />
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="card p-4">
+                  <div className="skeleton w-32 h-5 rounded mb-2" />
+                  <div className="skeleton w-20 h-3 rounded mb-3" />
+                  <div className="flex gap-1.5">
+                    {Array.from({ length: 4 }).map((_, j) => (
+                      <div key={j} className="skeleton w-2.5 h-2.5 rounded-full" />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           )}
 
-          {services && services.length === 0 && !isLoading && (
+          {!isLoading && projectGroups.length === 0 && services.length === 0 && (
             <div className="card p-12 text-center">
-              <p className="text-gray-400 mb-2">No services found</p>
+              <p className="text-gray-400 mb-2">No projects found</p>
               <p className="text-sm text-gray-600">
-                {hasActiveFilters
-                  ? 'Try adjusting your filters'
-                  : 'Add a project and service to get started'}
+                Add integrations in Settings to auto-discover services
               </p>
             </div>
           )}
 
-          {services && services.length > 0 && (
+          {projectGroups.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {services.map((s) => (
-                <StatusCard key={s.id} service={s} />
+              {projectGroups.map(({ project, services: svcs }) => (
+                <ProjectCard key={project.id} project={project} services={svcs} />
               ))}
             </div>
           )}
         </div>
 
-        {/* Sidebar: Incidents */}
+        {/* Sidebar: Recent Activity */}
         <div className="lg:col-span-1">
           <DashboardIncidentList />
         </div>

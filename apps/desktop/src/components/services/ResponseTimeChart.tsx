@@ -8,6 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  ReferenceArea,
   CartesianGrid,
 } from 'recharts';
 import { subHours, subDays, parseISO, format } from 'date-fns';
@@ -28,12 +29,18 @@ const rangeOffsets: Record<TimeRange, () => Date> = {
   '7d': () => subDays(new Date(), 7),
 };
 
+interface DowntimeRange {
+  x1: string;
+  x2: string;
+}
+
 export default function ResponseTimeChart({ serviceId, degradedThresholdMs = 2000 }: Props) {
   const [range, setRange] = useState<TimeRange>('24h');
 
   const since = useMemo(() => rangeOffsets[range]().toISOString(), [range]);
 
-  const { data: checks, isLoading, error } = useServiceHealth(serviceId, { since });
+  const { data, isLoading, error } = useServiceHealth(serviceId, { since });
+  const checks = data?.data;
 
   const chartData = useMemo(() => {
     if (!checks) return [];
@@ -47,6 +54,30 @@ export default function ResponseTimeChart({ serviceId, degradedThresholdMs = 200
       .sort((a: any, b: any) => new Date(a.time).getTime() - new Date(b.time).getTime());
   }, [checks]);
 
+  // Compute contiguous downtime ranges for red ReferenceArea overlays
+  const downtimeRanges = useMemo((): DowntimeRange[] => {
+    const ranges: DowntimeRange[] = [];
+    let rangeStart: string | null = null;
+
+    for (const point of chartData) {
+      if (point.status === 'down') {
+        if (!rangeStart) rangeStart = point.time;
+      } else {
+        if (rangeStart) {
+          // Close the range at the previous point
+          const prevIdx = chartData.indexOf(point) - 1;
+          ranges.push({ x1: rangeStart, x2: chartData[prevIdx]?.time || rangeStart });
+          rangeStart = null;
+        }
+      }
+    }
+    // Close any trailing range
+    if (rangeStart && chartData.length > 0) {
+      ranges.push({ x1: rangeStart, x2: chartData[chartData.length - 1].time });
+    }
+    return ranges;
+  }, [chartData]);
+
   function formatTick(iso: string) {
     try {
       const d = parseISO(iso);
@@ -57,6 +88,15 @@ export default function ResponseTimeChart({ serviceId, degradedThresholdMs = 200
       return '';
     }
   }
+
+  // Custom dot renderer — red for down status
+  const renderDot = (props: any) => {
+    const { cx, cy, payload } = props;
+    if (!payload || payload.status !== 'down') return <circle cx={cx} cy={cy} r={0} fill="transparent" />;
+    return (
+      <circle cx={cx} cy={cy} r={4} fill="#ef4444" stroke="#991b1b" strokeWidth={1} />
+    );
+  };
 
   return (
     <div className="space-y-3">
@@ -123,8 +163,24 @@ export default function ResponseTimeChart({ serviceId, degradedThresholdMs = 200
                   return label;
                 }
               }}
-              formatter={(value: number) => [`${value}ms`, 'Response Time']}
+              formatter={(value: number, _name: string, props: any) => {
+                const status = props?.payload?.status;
+                const label = status === 'down' ? 'DOWN' : 'Response Time';
+                return [`${value}ms`, label];
+              }}
             />
+            {/* Downtime zones — red shading */}
+            {downtimeRanges.map((dt, i) => (
+              <ReferenceArea
+                key={`dt-${i}`}
+                x1={dt.x1}
+                x2={dt.x2}
+                fill="#ef4444"
+                fillOpacity={0.15}
+                stroke="#ef4444"
+                strokeOpacity={0.3}
+              />
+            ))}
             <ReferenceLine
               y={degradedThresholdMs}
               stroke="#f59e0b"
@@ -141,7 +197,7 @@ export default function ResponseTimeChart({ serviceId, degradedThresholdMs = 200
               dataKey="responseTime"
               stroke="#3b82f6"
               strokeWidth={2}
-              dot={false}
+              dot={renderDot}
               activeDot={{ r: 4, fill: '#3b82f6' }}
             />
           </LineChart>

@@ -56,6 +56,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Inject version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Injecting version: $VERSION"
+          node scripts/sync-version.mjs "$VERSION"
+
+      - name: Inject version from run number (dev builds)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          VERSION="0.1.${{ github.run_number }}"
+          echo "Injecting version: $VERSION"
+          node scripts/sync-version.mjs "$VERSION"
+
       - name: Install Apple certificate (macOS)
         if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/')
         env:
@@ -82,11 +96,13 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/desktop
           args: ${{ matrix.args }}
           tagName: ${{ github.ref_name }}
-          releaseName: 'OpsBoard ${{ github.ref_name }}'
+          releaseName: 'CPI-Control ${{ github.ref_name }}'
           releaseBody: 'See the assets for download links.'
           releaseDraft: true
           prerelease: false
@@ -103,17 +119,79 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: opsboard-${{ matrix.platform }}-${{ matrix.rust-target }}
+          name: cpi-control-${{ matrix.platform }}-${{ matrix.rust-target }}
           path: |
             apps/desktop/src-tauri/target/*/release/bundle/**/*.dmg
             apps/desktop/src-tauri/target/*/release/bundle/**/*.app.tar.gz
+            apps/desktop/src-tauri/target/*/release/bundle/**/*.app.tar.gz.sig
             apps/desktop/src-tauri/target/*/release/bundle/**/*.msi
+            apps/desktop/src-tauri/target/*/release/bundle/**/*.msi.zip
+            apps/desktop/src-tauri/target/*/release/bundle/**/*.msi.zip.sig
             apps/desktop/src-tauri/target/*/release/bundle/**/*.exe
             apps/desktop/src-tauri/target/release/bundle/**/*.dmg
             apps/desktop/src-tauri/target/release/bundle/**/*.app.tar.gz
+            apps/desktop/src-tauri/target/release/bundle/**/*.app.tar.gz.sig
             apps/desktop/src-tauri/target/release/bundle/**/*.msi
+            apps/desktop/src-tauri/target/release/bundle/**/*.msi.zip
+            apps/desktop/src-tauri/target/release/bundle/**/*.msi.zip.sig
             apps/desktop/src-tauri/target/release/bundle/**/*.exe
           if-no-files-found: warn
+
+  # Generate updater JSON manifest for tagged releases
+  generate-updater-json:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build-tauri
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate latest.json for Tauri updater
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Find signature files
+          MAC_ARM_SIG=$(find artifacts -name '*.app.tar.gz.sig' -path '*aarch64*' -exec cat {} \; 2>/dev/null || echo "")
+          MAC_X86_SIG=$(find artifacts -name '*.app.tar.gz.sig' -path '*x86_64*' -exec cat {} \; 2>/dev/null || echo "")
+          WIN_SIG=$(find artifacts -name '*.msi.zip.sig' -exec cat {} \; 2>/dev/null || echo "")
+
+          REPO="https://github.com/CPI-Technologies-GmbH/cpi-control/releases/download/${GITHUB_REF_NAME}"
+
+          cat > latest.json <<EOF
+          {
+            "version": "$VERSION",
+            "pub_date": "$DATE",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "$MAC_ARM_SIG",
+                "url": "$REPO/CPI-Control.app.tar.gz"
+              },
+              "darwin-x86_64": {
+                "signature": "$MAC_X86_SIG",
+                "url": "$REPO/CPI-Control.app.tar.gz"
+              },
+              "windows-x86_64": {
+                "signature": "$WIN_SIG",
+                "url": "$REPO/CPI-Control_${VERSION}_x64_en-US.msi.zip"
+              }
+            }
+          }
+          EOF
+
+          cat latest.json
+
+      - name: Upload latest.json to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" latest.json --clobber
 
   # Create a rolling "latest" release on every main push
   release-latest:
@@ -146,7 +224,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create latest \
-            --title "OpsBoard Latest ($(date -u +%Y-%m-%d))" \
+            --title "CPI-Control Latest ($(date -u +%Y-%m-%d))" \
             --notes "Automated build from \`main\` branch.
 
           **Commit:** ${{ github.sha }}

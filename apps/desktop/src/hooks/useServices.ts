@@ -22,13 +22,14 @@ import type { HealthCheckResult } from '@/types';
 
 const BASE_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) || 'http://localhost:19876';
 
-export function useServiceHealth(serviceId: string, params?: { since?: string; limit?: number }) {
+export function useServiceHealth(serviceId: string, params?: { since?: string; limit?: number; offset?: number }) {
   return useQuery({
     queryKey: ['services', serviceId, 'health', params],
-    queryFn: async (): Promise<HealthCheckResult[]> => {
+    queryFn: async (): Promise<{ data: HealthCheckResult[]; total: number }> => {
       const sp = new URLSearchParams();
       if (params?.since) sp.set('since', params.since);
       if (params?.limit) sp.set('limit', String(params.limit));
+      if (params?.offset) sp.set('offset', String(params.offset));
       const qs = sp.toString();
       const url = `${BASE_URL}/api/inventory/services/${serviceId}/health-checks${qs ? `?${qs}` : ''}`;
       const res = await fetch(url);
@@ -75,6 +76,16 @@ export function useBatchUpdateServices() {
   return useMutation({
     mutationFn: ({ ids, updates }: { ids: string[]; updates: Partial<Service> }) =>
       api.batchUpdate(ids, updates),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['services'] });
+    },
+  });
+}
+
+export function useBatchDeleteServices() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => api.batchDelete(ids),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['services'] });
     },

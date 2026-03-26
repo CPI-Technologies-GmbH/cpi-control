@@ -36,8 +36,8 @@ export default function App() {
               <Route path="/incidents" element={<IncidentListPage />} />
               <Route path="/incidents/:id" element={<IncidentDetail />} />
               <Route path="/logs" element={<LogViewer />} />
-              <Route path="/agent" element={<AgentManagement />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/settings/agent" element={<AgentManagement />} />
             </Routes>
           </MainLayout>
         }

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import UpdateBanner from './UpdateBanner';
 import { useUIStore } from '@/stores/uiStore';
 import { useEventStream } from '@/hooks/useEventStream';
 import NotificationToast from '@/components/notifications/NotificationToast';
@@ -18,6 +19,7 @@ export default function MainLayout({ children }: Props) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-950">
+      <UpdateBanner />
       <Sidebar />
       <div
         className={clsx(

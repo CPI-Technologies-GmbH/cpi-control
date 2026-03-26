@@ -66,6 +66,9 @@ interface LogToolbarProps {
 
   // Entry count
   entryCount: number;
+
+  // Embedded mode (ServiceDetail log tab) — hide service/source selectors & config manager
+  isEmbedded?: boolean;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -87,6 +90,7 @@ export default function LogToolbar({
   liveTail,
   onLiveTailToggle,
   entryCount,
+  isEmbedded = false,
 }: LogToolbarProps) {
   function toggleSource(source: LogSource) {
     if (sources.includes(source)) {
@@ -140,29 +144,35 @@ export default function LogToolbar({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <LogConfigManager
-            currentState={{
-              selectedServiceIds,
-              sources,
-              levels,
-              since,
-              search,
-              columns: visibleColumns,
-            }}
-            onLoad={handleConfigLoad}
-          />
-          <ColumnSelector
-            visibleColumns={visibleColumns}
-            onChange={onColumnsChange}
-          />
-          <button
-            onClick={handleOpenInWindow}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors btn-secondary"
-            title="Open in new window"
-          >
-            <ExternalLink size={14} />
-            Window
-          </button>
+          {!isEmbedded && (
+            <LogConfigManager
+              currentState={{
+                selectedServiceIds,
+                sources,
+                levels,
+                since,
+                search,
+                columns: visibleColumns,
+              }}
+              onLoad={handleConfigLoad}
+            />
+          )}
+          {!isEmbedded && (
+            <ColumnSelector
+              visibleColumns={visibleColumns}
+              onChange={onColumnsChange}
+            />
+          )}
+          {!isEmbedded && (
+            <button
+              onClick={handleOpenInWindow}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors btn-secondary"
+              title="Open in new window"
+            >
+              <ExternalLink size={14} />
+              Window
+            </button>
+          )}
           <button
             onClick={onLiveTailToggle}
             className={clsx(
@@ -180,34 +190,38 @@ export default function LogToolbar({
 
       {/* Filter Bar */}
       <div className="card p-4 space-y-3">
-        {/* Service multi-select */}
-        <ServiceMultiSelect
-          services={services}
-          selectedIds={selectedServiceIds}
-          onChange={onSelectedServiceIdsChange}
-        />
+        {/* Service multi-select (hidden in embedded mode) */}
+        {!isEmbedded && (
+          <ServiceMultiSelect
+            services={services}
+            selectedIds={selectedServiceIds}
+            onChange={onSelectedServiceIdsChange}
+          />
+        )}
 
         <div className="flex items-center gap-4 flex-wrap">
-          {/* Source filters */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 uppercase tracking-wide">Source</span>
-            <div className="flex flex-wrap gap-1.5">
-              {ALL_SOURCES.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => toggleSource(s)}
-                  className={clsx(
-                    'px-2 py-0.5 rounded text-xs font-medium transition-colors border',
-                    sources.includes(s)
-                      ? `${SOURCE_COLORS[s]} border-current/20`
-                      : 'bg-gray-800 text-gray-600 border-gray-700'
-                  )}
-                >
-                  {s}
-                </button>
-              ))}
+          {/* Source filters (hidden in embedded mode) */}
+          {!isEmbedded && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 uppercase tracking-wide">Source</span>
+              <div className="flex flex-wrap gap-1.5">
+                {ALL_SOURCES.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => toggleSource(s)}
+                    className={clsx(
+                      'px-2 py-0.5 rounded text-xs font-medium transition-colors border',
+                      sources.includes(s)
+                        ? `${SOURCE_COLORS[s]} border-current/20`
+                        : 'bg-gray-800 text-gray-600 border-gray-700'
+                    )}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Level filters */}
           <div className="flex items-center gap-2">

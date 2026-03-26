@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { integrations as api } from '@/lib/api';
 import { formatRelativeTime, statusBgColor } from '@/lib/formatters';
@@ -6,6 +7,7 @@ import clsx from 'clsx';
 
 export default function IntegrationSettings() {
   const qc = useQueryClient();
+  const [syncingId, setSyncingId] = useState<string | null>(null);
   const { data: configs, isLoading, error } = useQuery({
     queryKey: ['integrations'],
     queryFn: api.list,
@@ -20,9 +22,15 @@ export default function IntegrationSettings() {
   });
 
   const syncMutation = useMutation({
-    mutationFn: (id: string) => api.sync(id),
+    mutationFn: (id: string) => {
+      setSyncingId(id);
+      return api.sync(id);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['integrations'] });
+    },
+    onSettled: () => {
+      setSyncingId(null);
     },
   });
 
@@ -72,12 +80,12 @@ export default function IntegrationSettings() {
               {/* Sync button */}
               <button
                 onClick={() => syncMutation.mutate(config.id)}
-                disabled={syncMutation.isPending}
+                disabled={syncingId === config.id}
                 className="btn-ghost text-xs flex items-center gap-1.5 py-1"
               >
                 <RefreshCw
                   size={12}
-                  className={syncMutation.isPending ? 'animate-spin' : ''}
+                  className={syncingId === config.id ? 'animate-spin' : ''}
                 />
                 Sync
               </button>

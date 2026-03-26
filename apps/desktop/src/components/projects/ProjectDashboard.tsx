@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import clsx from 'clsx';
 import { useProjectStats } from '@/hooks/useProjectStats';
+import ProjectStatusTimeline from './ProjectStatusTimeline';
 import {
   Server,
   Heart,
@@ -206,6 +207,9 @@ export default function ProjectDashboard({ projectId }: { projectId: string }) {
           )}
         </div>
       </div>
+
+      {/* Service Status Timeline */}
+      <ProjectStatusTimeline projectId={projectId} />
 
       {/* Recent Incidents + Deployments */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

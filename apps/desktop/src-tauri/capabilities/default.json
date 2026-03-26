@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default capability for OpsBoard",
+  "description": "Default capability for CPI-Control",
   "windows": ["*"],
   "permissions": [
     "core:default",
@@ -8,6 +8,9 @@
     "shell:allow-execute",
     "shell:default",
     "process:default",
-    "notification:default"
+    "process:allow-restart",
+    "process:allow-exit",
+    "notification:default",
+    "updater:default"
   ]
 }

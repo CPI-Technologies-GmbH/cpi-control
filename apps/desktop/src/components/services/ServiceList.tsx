@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { useServices, useBatchUpdateServices, useDeleteService } from '@/hooks/useServices';
+import { useServices, useBatchUpdateServices, useDeleteService, useBatchDeleteServices } from '@/hooks/useServices';
 import { statusDotColor, formatRelativeTime, formatMs } from '@/lib/formatters';
 import { ProviderIcon } from '@/components/icons/ProviderIcons';
 import { Search, ExternalLink, Globe, Lock, Trash2, X } from 'lucide-react';
@@ -34,6 +34,7 @@ export default function ServiceList({ projectId }: { projectId?: string }) {
   const { data: services, isLoading, error } = useServices(filters);
   const batchUpdate = useBatchUpdateServices();
   const deleteService = useDeleteService();
+  const batchDelete = useBatchDeleteServices();
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -93,15 +94,12 @@ export default function ServiceList({ projectId }: { projectId?: string }) {
     }
     setBatchUpdating(true);
     try {
-      const promises = Array.from(selectedIds).map((id) =>
-        deleteService.mutateAsync(id)
-      );
-      await Promise.all(promises);
+      await batchDelete.mutateAsync(Array.from(selectedIds));
       clearSelection();
     } finally {
       setBatchUpdating(false);
     }
-  }, [selectedIds, deleteService, clearSelection]);
+  }, [selectedIds, batchDelete, clearSelection]);
 
   const isAllSelected = services && services.length > 0 && selectedIds.size === services.length;
   const hasSelection = selectedIds.size > 0;

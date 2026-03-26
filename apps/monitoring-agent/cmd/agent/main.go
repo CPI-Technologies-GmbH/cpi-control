@@ -16,6 +16,7 @@ import (
 	"opsboard-agent/internal/incident"
 	"opsboard-agent/internal/notify"
 	"opsboard-agent/internal/scheduler"
+	"opsboard-agent/internal/updater"
 )
 
 // Version is set by ldflags at build time.
@@ -126,6 +127,10 @@ func main() {
 		log.Printf("No serverUrl configured, heartbeat sender disabled")
 	}
 
+	// Start auto-updater (checks GitHub releases periodically)
+	agentUpdater := updater.New(Version)
+	agentUpdater.Start()
+
 	log.Printf("Agent running: agentId=%s, targets=%d, apiPort=%d",
 		cfg.AgentID, len(cfg.Targets), cfg.APIPort)
 
@@ -139,6 +144,9 @@ func main() {
 	shutdownTimeout := 30 * time.Second
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
+
+	// Stop auto-updater
+	agentUpdater.Stop()
 
 	// Stop heartbeat sender
 	if hbSender != nil {

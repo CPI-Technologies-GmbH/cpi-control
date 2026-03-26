@@ -99,9 +99,18 @@ export async function deleteRule(db: DB, id: string) {
 
 // ─── Notification Service with Cooldown ──────────────────────────────────────
 
+interface PendingEvent {
+  eventType: string;
+  message: string;
+  details: Record<string, unknown>;
+}
+
 export class NotificationService {
   private db: DB;
   private senders = new Map<string, (config: Record<string, unknown>, message: string, details: Record<string, unknown>) => Promise<boolean>>();
+  private pendingEvents: PendingEvent[] = [];
+  private batchTimer: ReturnType<typeof setTimeout> | null = null;
+  private batchWindowMs = 30_000; // 30s debounce window
 
   constructor(db: DB) {
     this.db = db;
@@ -199,6 +208,69 @@ export class NotificationService {
     }
 
     return { sent, skipped, errors };
+  }
+
+  /**
+   * Queue a notification into a 30s batch window. Events are collected and sent
+   * as a single consolidated notification to prevent notification floods during
+   * cluster outages.
+   */
+  notifyBatched(
+    eventType: string,
+    message: string,
+    details: Record<string, unknown> = {}
+  ): void {
+    this.pendingEvents.push({ eventType, message, details });
+
+    if (!this.batchTimer) {
+      this.batchTimer = setTimeout(() => this.flushBatch(), this.batchWindowMs);
+    }
+  }
+
+  private async flushBatch(): Promise<void> {
+    this.batchTimer = null;
+    const events = this.pendingEvents.splice(0);
+    if (events.length === 0) return;
+
+    // Group by eventType
+    const groups = new Map<string, PendingEvent[]>();
+    for (const ev of events) {
+      const group = groups.get(ev.eventType) || [];
+      group.push(ev);
+      groups.set(ev.eventType, group);
+    }
+
+    for (const [eventType, group] of groups) {
+      if (group.length === 1) {
+        // Single event — send as-is
+        await this.notify(eventType, group[0].message, group[0].details);
+      } else {
+        // Multiple events — consolidate into one message
+        const serviceNames = group
+          .map((e) => e.details.serviceName as string || 'Unknown')
+          .filter((v, i, a) => a.indexOf(v) === i);
+        const consolidatedMessage = `${group.length} services affected: ${serviceNames.join(', ')}`;
+        const consolidatedDetails: Record<string, unknown> = {
+          affectedCount: group.length,
+          serviceNames,
+          events: group.map((e) => ({
+            message: e.message,
+            serviceId: e.details.serviceId,
+            serviceName: e.details.serviceName,
+          })),
+        };
+        await this.notify(eventType, consolidatedMessage, consolidatedDetails);
+      }
+    }
+  }
+
+  /** Flush all pending batched notifications immediately (for graceful shutdown). */
+  async flushAll(): Promise<void> {
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+    await this.flushBatch();
   }
 
   async testNotification(ruleId: string): Promise<{ success: boolean; message: string }> {

@@ -24,7 +24,6 @@ const navigation = [
   { name: 'Cron Jobs', href: '/cronjobs', icon: Clock },
   { name: 'Incidents', href: '/incidents', icon: AlertTriangle },
   { name: 'Logs', href: '/logs', icon: ScrollText },
-  { name: 'Agent', href: '/agent', icon: Server },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
@@ -44,7 +43,7 @@ export default function Sidebar() {
         {sidebarOpen && (
           <div className="flex items-center gap-2">
             <Activity className="h-6 w-6 text-blue-500" />
-            <span className="text-lg font-bold text-gray-100">OpsBoard</span>
+            <span className="text-lg font-bold text-gray-100">CPI-Control</span>
           </div>
         )}
         <button
@@ -80,7 +79,7 @@ export default function Sidebar() {
       {/* Footer */}
       {sidebarOpen && (
         <div className="border-t border-gray-800 p-4">
-          <p className="text-xs text-gray-600">OpsBoard v0.1.0</p>
+          <p className="text-xs text-gray-600">CPI-Control v0.1.0</p>
         </div>
       )}
     </aside>

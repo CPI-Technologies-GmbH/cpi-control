@@ -4,7 +4,7 @@ use tauri::Manager;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
-    format!("Hello, {}! Welcome to OpsBoard.", name)
+    format!("Hello, {}! Welcome to CPI-Control.", name)
 }
 
 struct BackendProcess(Mutex<Option<Child>>);
@@ -54,9 +54,10 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(BackendProcess(Mutex::new(None)))
         .setup(|app| {
-            println!("OpsBoard Desktop starting...");
+            println!("CPI-Control Desktop starting...");
 
             // Resolve backend directory from Tauri resources
             let resource_dir = app.path().resource_dir().expect("Failed to get resource dir");

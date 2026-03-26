@@ -7,6 +7,7 @@ import { DEFAULT_COLUMNS, type LogColumn } from './ColumnSelector';
 import LogToolbar from './LogToolbar';
 import LogTable from './LogTable';
 import LogVolumeChart from './LogVolumeChart';
+import LogServiceSidebar from './LogServiceSidebar';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ function useDebounce(value: string, delay: number): string {
 
 export default function LogViewer({ initialServiceId }: { initialServiceId?: string } = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const isEmbedded = !!initialServiceId;
 
   // ── Service multi-select state ────────────────────────────────────────
   const urlServiceId = initialServiceId || searchParams.get('serviceId') || '';
@@ -47,8 +49,9 @@ export default function LogViewer({ initialServiceId }: { initialServiceId?: str
   // All service IDs for color assignment
   const allServiceIds = servicesList.map((s: Service) => s.id);
 
-  // Sync URL
+  // Sync URL (skip in embedded mode)
   useEffect(() => {
+    if (isEmbedded) return;
     const next = new URLSearchParams(searchParams);
     // Remove existing serviceId params
     next.delete('serviceId');
@@ -162,7 +165,9 @@ export default function LogViewer({ initialServiceId }: { initialServiceId?: str
   // ── Render ────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-3 flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex gap-3 h-[calc(100vh-4rem)]">
+      {/* Main content */}
+      <div className="flex-1 min-w-0 space-y-3 flex flex-col">
       <LogToolbar
         services={servicesList}
         selectedServiceIds={selectedServiceIds}
@@ -183,6 +188,7 @@ export default function LogViewer({ initialServiceId }: { initialServiceId?: str
           setAutoScroll(true);
         }}
         entryCount={entries.length}
+        isEmbedded={isEmbedded}
       />
 
       {/* Error */}
@@ -221,6 +227,16 @@ export default function LogViewer({ initialServiceId }: { initialServiceId?: str
         autoScroll={autoScroll}
         onAutoScrollChange={setAutoScroll}
       />
+      </div>
+
+      {/* Service sidebar (hidden in embedded mode) */}
+      {!isEmbedded && (
+        <LogServiceSidebar
+          services={servicesList}
+          selectedIds={selectedServiceIds}
+          onChange={setSelectedServiceIds}
+        />
+      )}
     </div>
   );
 }

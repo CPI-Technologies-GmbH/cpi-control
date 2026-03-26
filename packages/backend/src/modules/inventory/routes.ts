@@ -109,6 +109,18 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     }
   });
 
+  app.post<{ Body: { ids: string[] } }>(
+    '/services/batch-delete',
+    async (request, reply) => {
+      const { ids } = request.body;
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return reply.status(400).send({ error: 'ids must be a non-empty array' });
+      }
+      const result = await service.batchDeleteServices(db, ids);
+      return reply.send(result);
+    }
+  );
+
   app.patch<{ Body: BatchUpdateServicesBody }>(
     '/services/batch',
     async (request, reply) => {
@@ -328,13 +340,73 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     }
   );
 
+  // ─── Project Status Timeline ──────────────────────────────────────────────
+  app.get<{
+    Params: { id: string };
+    Querystring: { since?: string; bucketMinutes?: string };
+  }>('/projects/:id/status-timeline', async (request, reply) => {
+    const { id } = request.params;
+    const { since, bucketMinutes } = request.query;
+
+    const { healthCheckResults, websites } = await import('../../db/schema.js');
+    const { eq, and, gte, inArray } = await import('drizzle-orm');
+
+    // Get all services for this project
+    const projectServices = db
+      .select({ id: websites.id, name: websites.name })
+      .from(websites)
+      .where(eq(websites.projectId, id))
+      .all();
+
+    if (projectServices.length === 0) {
+      return reply.send([]);
+    }
+
+    const serviceIds = projectServices.map((s) => s.id);
+    const sinceDate = since || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const bucketMs = (bucketMinutes ? parseInt(bucketMinutes, 10) : 30) * 60 * 1000;
+
+    const checks = db
+      .select()
+      .from(healthCheckResults)
+      .where(
+        and(
+          inArray(healthCheckResults.websiteId, serviceIds),
+          gte(healthCheckResults.checkedAt, sinceDate)
+        )
+      )
+      .all();
+
+    // Bucket by time
+    const buckets = new Map<number, { healthy: number; degraded: number; down: number }>();
+    for (const check of checks) {
+      const time = Math.floor(new Date(check.checkedAt!).getTime() / bucketMs) * bucketMs;
+      if (!buckets.has(time)) {
+        buckets.set(time, { healthy: 0, degraded: 0, down: 0 });
+      }
+      const bucket = buckets.get(time)!;
+      if (check.status === 'healthy') bucket.healthy++;
+      else if (check.status === 'degraded') bucket.degraded++;
+      else if (check.status === 'down') bucket.down++;
+    }
+
+    const timeline = Array.from(buckets.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([time, counts]) => ({
+        time: new Date(time).toISOString(),
+        ...counts,
+      }));
+
+    return reply.send(timeline);
+  });
+
   // ─── Service Health Check History ───────────────────────────────────────────
   app.get<{
     Params: { id: string };
-    Querystring: { since?: string; limit?: string };
+    Querystring: { since?: string; limit?: string; offset?: string };
   }>('/services/:id/health-checks', async (request, reply) => {
     const { id } = request.params;
-    const { since, limit } = request.query;
+    const { since, limit, offset } = request.query;
 
     const { healthCheckResults } = await import('../../db/schema.js');
     const { eq, and, gte, desc } = await import('drizzle-orm');
@@ -352,9 +424,11 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       filtered = filtered.filter((r: any) => r.checkedAt >= since);
     }
 
+    const total = filtered.length;
+    const startOffset = offset ? parseInt(offset, 10) : 0;
     const maxResults = limit ? parseInt(limit, 10) : 100;
-    filtered = filtered.slice(0, maxResults);
+    filtered = filtered.slice(startOffset, startOffset + maxResults);
 
-    return reply.send(filtered);
+    return reply.send({ data: filtered, total });
   });
 }

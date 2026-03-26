@@ -321,6 +321,11 @@ export async function deleteService(db: DB, id: string) {
   return true;
 }
 
+export async function batchDeleteServices(db: DB, ids: string[]) {
+  db.delete(websites).where(inArray(websites.id, ids)).run();
+  return { deleted: ids.length };
+}
+
 export async function batchUpdateServices(db: DB, body: BatchUpdateServicesBody) {
   const now = new Date().toISOString();
   const { ids, updates } = body;

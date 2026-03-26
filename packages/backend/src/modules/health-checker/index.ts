@@ -4,6 +4,8 @@ import { websites, monitoringTargets, healthCheckResults } from '../../db/schema
 import { createChildLogger } from '../../shared/logger.js';
 import { eventBus, type ServiceEventType } from '../../shared/event-bus.js';
 import { ulid } from 'ulid';
+import type { IncidentDetector } from '../incidents/service.js';
+import type { NotificationService } from '../notifications/service.js';
 
 const log = createChildLogger('health-checker');
 
@@ -67,11 +69,20 @@ export class HealthChecker {
   private checkIntervalMs: number;
   private semaphore: Semaphore;
   private running = false;
+  private incidentDetector: IncidentDetector | null = null;
+  private notificationService: NotificationService | null = null;
 
-  constructor(db: DB, options?: { checkIntervalMs?: number; maxConcurrency?: number }) {
+  constructor(db: DB, options?: {
+    checkIntervalMs?: number;
+    maxConcurrency?: number;
+    incidentDetector?: IncidentDetector;
+    notificationService?: NotificationService;
+  }) {
     this.db = db;
     this.checkIntervalMs = options?.checkIntervalMs ?? 60 * 1000; // 60 seconds
     this.semaphore = new Semaphore(options?.maxConcurrency ?? 10);
+    this.incidentDetector = options?.incidentDetector ?? null;
+    this.notificationService = options?.notificationService ?? null;
   }
 
   start(): void {
@@ -178,6 +189,55 @@ export class HealthChecker {
         checkedAt: now,
         createdAt: now,
       }).run();
+
+      // Feed result to IncidentDetector (tracks consecutive failures/recoveries)
+      if (this.incidentDetector) {
+        try {
+          const incidentResult = await this.incidentDetector.processHealthCheck(
+            target.websiteId,
+            result.status,
+            {
+              statusCode: result.statusCode ?? undefined,
+              responseTimeMs: result.responseTimeMs,
+              errorMessage: result.errorMessage ?? undefined,
+            }
+          );
+
+          // Send notifications for new incidents (batched to prevent flood during cluster outages)
+          if (incidentResult.incidentCreated && this.notificationService) {
+            this.notificationService.notifyBatched(
+              'incident.created',
+              `${website.name} is ${result.status}`,
+              {
+                serviceId: target.websiteId,
+                serviceName: website.name,
+                severity: result.status === 'down' ? 'critical' : 'warning',
+                incidentId: incidentResult.incidentCreated,
+                statusCode: result.statusCode,
+                errorMessage: result.errorMessage,
+              }
+            );
+          }
+
+          // Send notifications for auto-resolved incidents (batched)
+          if (incidentResult.incidentResolved && this.notificationService) {
+            this.notificationService.notifyBatched(
+              'incident.resolved',
+              `${website.name} has recovered`,
+              {
+                serviceId: target.websiteId,
+                serviceName: website.name,
+                incidentId: incidentResult.incidentResolved,
+              }
+            );
+          }
+        } catch (err: any) {
+          log.error(
+            { websiteId: target.websiteId, error: err.message },
+            'IncidentDetector processing failed'
+          );
+        }
+      }
 
       // Update website status if it was previously 'unknown' or if status changed
       if (website.status === 'unknown' || website.status !== result.status) {
@@ -290,6 +350,10 @@ export class HealthChecker {
         // 404 is treated as healthy — many services return 404 on their health endpoint root
         return { status: 'healthy', statusCode: code, responseTimeMs, errorMessage: null };
       }
+      if (code === 401 || code === 403) {
+        // Auth-protected endpoints are running services — treat as healthy
+        return { status: 'healthy', statusCode: code, responseTimeMs, errorMessage: 'Auth required' };
+      }
       if (code >= 500) {
         return {
           status: 'down',
@@ -298,7 +362,7 @@ export class HealthChecker {
           errorMessage: `HTTP ${code}`,
         };
       }
-      // Other 4xx (401, 403, 429, etc.) → degraded
+      // Other 4xx (429, etc.) → degraded
       return {
         status: 'degraded',
         statusCode: code,

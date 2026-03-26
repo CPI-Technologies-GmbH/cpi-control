@@ -35,10 +35,14 @@ const BASE_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${BASE_URL}${path}`;
+  const headers: Record<string, string> = {};
+  if (options?.body) {
+    headers['Content-Type'] = 'application/json';
+  }
   const res = await fetch(url, {
     headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
+      ...headers,
+      ...(options?.headers as Record<string, string>),
     },
     ...options,
   });
@@ -99,6 +103,11 @@ export const services = {
     request<Service[]>('/api/inventory/services/batch', {
       method: 'PATCH',
       body: JSON.stringify({ ids, updates }),
+    }),
+  batchDelete: (ids: string[]) =>
+    request<{ deleted: number }>('/api/inventory/services/batch-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
     }),
 };
 

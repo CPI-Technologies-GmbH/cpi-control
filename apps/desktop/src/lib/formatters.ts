@@ -2,7 +2,7 @@ import { formatDistanceToNow, format, parseISO } from 'date-fns';
 import type { ServiceStatus, IncidentSeverity, DeploymentStatus, DeploymentProvider } from '@/types';
 
 export function formatDate(iso: string | null | undefined): string {
-  if (!iso) return '—';
+  if (!iso || iso === 'null') return '—';
   try {
     return format(parseISO(iso), 'MMM d, yyyy HH:mm');
   } catch {
@@ -11,7 +11,7 @@ export function formatDate(iso: string | null | undefined): string {
 }
 
 export function formatRelativeTime(iso: string | null | undefined): string {
-  if (!iso) return '—';
+  if (!iso || iso === 'null') return 'Nie';
   try {
     return formatDistanceToNow(parseISO(iso), { addSuffix: true });
   } catch {

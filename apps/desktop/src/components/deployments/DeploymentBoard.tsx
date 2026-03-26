@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useDeployments } from '@/hooks/useDeployments';
 import { useDeploymentFilterStore } from '@/stores/filterStore';
 import DeploymentRow from './DeploymentRow';
+import DeploymentDetail from './DeploymentDetail';
 import { ProviderIcon } from '@/components/icons/ProviderIcons';
 import { Rocket, Filter, X, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
-import type { DeploymentStatus, DeploymentProvider, Environment } from '@/types';
+import type { DeploymentRecord, DeploymentStatus, DeploymentProvider, Environment } from '@/types';
 import { providerActiveColor, providerLabel } from '@/lib/formatters';
 
 const statusOptions: DeploymentStatus[] = ['pending', 'building', 'deploying', 'success', 'failed', 'cancelled'];
@@ -14,6 +15,7 @@ const envOptions: Environment[] = ['production', 'staging', 'development'];
 
 export default function DeploymentBoard() {
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedDeployment, setSelectedDeployment] = useState<DeploymentRecord | null>(null);
   const filters = useDeploymentFilterStore();
 
   const apiFilters = {
@@ -239,11 +241,23 @@ export default function DeploymentBoard() {
             </thead>
             <tbody>
               {deployments.map((dep) => (
-                <DeploymentRow key={dep.id} deployment={dep} />
+                <DeploymentRow
+                  key={dep.id}
+                  deployment={dep}
+                  onClick={() => setSelectedDeployment(dep)}
+                />
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Detail Panel */}
+      {selectedDeployment && (
+        <DeploymentDetail
+          deployment={selectedDeployment}
+          onClose={() => setSelectedDeployment(null)}
+        />
       )}
     </div>
   );

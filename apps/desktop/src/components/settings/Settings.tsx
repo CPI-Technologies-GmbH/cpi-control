@@ -2,15 +2,17 @@ import { useState } from 'react';
 import IntegrationsHub from './IntegrationsHub';
 import NotificationSettings from './NotificationSettings';
 import GeneralSettings from './GeneralSettings';
-import { Settings as SettingsIcon, Plug, Bell, Sliders } from 'lucide-react';
+import AgentManagement from '../agent/AgentManagement';
+import { Settings as SettingsIcon, Plug, Bell, Sliders, Server } from 'lucide-react';
 import clsx from 'clsx';
 
-type Tab = 'general' | 'integrations' | 'notifications';
+type Tab = 'general' | 'integrations' | 'notifications' | 'agent';
 
 const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'general', label: 'General', icon: <Sliders size={14} /> },
   { key: 'integrations', label: 'Integrations', icon: <Plug size={14} /> },
   { key: 'notifications', label: 'Notifications', icon: <Bell size={14} /> },
+  { key: 'agent', label: 'Agent', icon: <Server size={14} /> },
 ];
 
 export default function Settings() {
@@ -45,6 +47,7 @@ export default function Settings() {
       {activeTab === 'general' && <GeneralSettings />}
       {activeTab === 'integrations' && <IntegrationsHub />}
       {activeTab === 'notifications' && <NotificationSettings />}
+      {activeTab === 'agent' && <AgentManagement />}
     </div>
   );
 }

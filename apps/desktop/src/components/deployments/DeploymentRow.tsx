@@ -7,13 +7,17 @@ import clsx from 'clsx';
 
 interface Props {
   deployment: DeploymentRecord;
+  onClick?: () => void;
 }
 
-export default function DeploymentRow({ deployment }: Props) {
+export default function DeploymentRow({ deployment, onClick }: Props) {
   const dep = deployment;
 
   return (
-    <tr className="hover:bg-gray-800/30 transition-colors border-b border-gray-800/50">
+    <tr
+      className="hover:bg-gray-800/30 transition-colors border-b border-gray-800/50 cursor-pointer"
+      onClick={onClick}
+    >
       {/* Service */}
       <td className="px-4 py-3">
         <p className="text-sm font-medium text-gray-200">{dep.serviceName || '—'}</p>
