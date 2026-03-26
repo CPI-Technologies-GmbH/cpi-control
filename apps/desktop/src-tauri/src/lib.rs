@@ -17,11 +17,27 @@ fn find_node() -> Option<std::path::PathBuf> {
             r"C:\Program Files\nodejs\node.exe".to_string(),
         ]
     } else {
-        vec![
+        let mut paths = vec![
             "node".to_string(),
             "/usr/local/bin/node".to_string(),
             "/opt/homebrew/bin/node".to_string(),
-        ]
+        ];
+        // Add nvm-managed Node.js paths
+        if let Ok(home) = std::env::var("HOME") {
+            let nvm_dir = std::path::PathBuf::from(&home).join(".nvm/versions/node");
+            if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
+                let mut versions: Vec<_> = entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+                    .collect();
+                // Sort descending to prefer latest version
+                versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+                for v in versions {
+                    paths.push(v.path().join("bin/node").to_string_lossy().to_string());
+                }
+            }
+        }
+        paths
     };
 
     // Try PATH first via `which`
