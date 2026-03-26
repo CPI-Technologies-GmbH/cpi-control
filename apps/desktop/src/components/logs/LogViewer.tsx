@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { logs as api, services as servicesApi, BASE_URL } from '@/lib/api';
@@ -13,7 +13,7 @@ import LogServiceSidebar from './LogServiceSidebar';
 
 const ALL_SOURCES: LogSource[] = ['kubernetes', 'vercel', 'github', 'agent', 'backend'];
 const ALL_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
-const MAX_ENTRIES = 2000;
+const MAX_ENTRIES = 5000;
 const DEBOUNCE_MS = 300;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -25,6 +25,17 @@ function useDebounce(value: string, delay: number): string {
     return () => clearTimeout(timer);
   }, [value, delay]);
   return debounced;
+}
+
+// Deduplicate entries by id (SSE may resend same entries on reconnect)
+function dedupeEntries(entries: LogEntry[]): LogEntry[] {
+  const seen = new Set<string>();
+  return entries.filter((e) => {
+    const key = e.id || `${e.timestamp}-${e.message?.slice(0, 50)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -53,7 +64,6 @@ export default function LogViewer({ initialServiceId }: { initialServiceId?: str
   useEffect(() => {
     if (isEmbedded) return;
     const next = new URLSearchParams(searchParams);
-    // Remove existing serviceId params
     next.delete('serviceId');
     if (selectedServiceIds.length > 0 && selectedServiceIds.length < servicesList.length) {
       selectedServiceIds.forEach((id) => next.append('serviceId', id));
@@ -72,46 +82,32 @@ export default function LogViewer({ initialServiceId }: { initialServiceId?: str
   const [visibleColumns, setVisibleColumns] = useState<LogColumn[]>(DEFAULT_COLUMNS);
 
   // ── Live tail / UI state ──────────────────────────────────────────────
-  const [liveTail, setLiveTail] = useState(false);
-  const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [liveTail, setLiveTail] = useState(true); // ON by default
+  const [rawEntries, setRawEntries] = useState<LogEntry[]>([]);
   const [autoScroll, setAutoScroll] = useState(true);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const historicalLoadedRef = useRef(false);
 
-  // ── Data Fetching ─────────────────────────────────────────────────────
+  // ── Historical Data (one-time load on mount + when since changes) ─────
 
-  const filters: Record<string, any> = {
-    ...(sources.length > 0 && sources.length < ALL_SOURCES.length && { source: sources }),
-    ...(levels.length > 0 && levels.length < ALL_LEVELS.length && { level: levels }),
-    since,
-    ...(debouncedSearch && { search: debouncedSearch }),
-    // For multi-select: if exactly 1 service selected, use backend serviceId filter
-    // If multiple, we fetch all and filter client-side
-    ...(selectedServiceIds.length === 1 && { serviceId: selectedServiceIds[0] }),
-  };
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['logs', filters],
-    queryFn: () => api.list(filters),
-    refetchInterval: liveTail ? false : 15_000,
+  const { data: historicalData, isLoading, error } = useQuery({
+    queryKey: ['logs-historical', since],
+    queryFn: () => api.list({ since }),
+    staleTime: Infinity, // Only refetch when `since` changes
+    refetchInterval: liveTail ? false : 15_000, // Poll when not live-tailing
   });
 
-  // Sync query data into entries state, apply multi-service filter client-side
+  // Seed raw entries with historical data
   useEffect(() => {
-    if (data) {
-      let filtered = data;
-      // If multiple services are selected, we need to filter client-side
-      // since the backend only supports single serviceId
-      // Note: entries without serviceId in metadata pass through when filter is active
-      if (selectedServiceIds.length > 1) {
-        filtered = data.filter((entry) => {
-          const svcId = (entry.metadata?.serviceId as string) || '';
-          if (!svcId) return true; // Show entries without service association
-          return selectedServiceIds.includes(svcId);
-        });
-      }
-      setEntries(filtered.slice(-MAX_ENTRIES));
+    if (historicalData && historicalData.length > 0) {
+      setRawEntries((prev) => {
+        // Merge: historical first, then any live entries that came after
+        const merged = [...historicalData, ...prev];
+        return dedupeEntries(merged).slice(-MAX_ENTRIES);
+      });
+      historicalLoadedRef.current = true;
     }
-  }, [data, selectedServiceIds]);
+  }, [historicalData]);
 
   // ── SSE Live Tail ─────────────────────────────────────────────────────
 
@@ -124,26 +120,15 @@ export default function LogViewer({ initialServiceId }: { initialServiceId?: str
       return;
     }
 
-    const params = new URLSearchParams();
-    sources.forEach((s) => params.append('source', s));
-    levels.forEach((l) => params.append('level', l));
-    if (debouncedSearch) params.set('search', debouncedSearch);
-    if (selectedServiceIds.length === 1) params.set('serviceId', selectedServiceIds[0]);
-    const qs = params.toString();
-
-    const url = `${BASE_URL}/api/logs/stream${qs ? `?${qs}` : ''}`;
+    // SSE fetches all sources — filtering is done client-side
+    const url = `${BASE_URL}/api/logs/stream`;
     const es = new EventSource(url);
     eventSourceRef.current = es;
 
     es.onmessage = (event) => {
       try {
         const entry: LogEntry = JSON.parse(event.data);
-        // Apply multi-service filter for SSE too
-        if (selectedServiceIds.length > 1) {
-          const svcId = (entry.metadata?.serviceId as string) || '';
-          if (svcId && !selectedServiceIds.includes(svcId)) return;
-        }
-        setEntries((prev) => {
+        setRawEntries((prev) => {
           const next = [...prev, entry];
           return next.length > MAX_ENTRIES ? next.slice(next.length - MAX_ENTRIES) : next;
         });
@@ -160,7 +145,47 @@ export default function LogViewer({ initialServiceId }: { initialServiceId?: str
       es.close();
       eventSourceRef.current = null;
     };
-  }, [liveTail, sources, levels, debouncedSearch, selectedServiceIds]);
+  }, [liveTail]);
+
+  // ── Client-side Filtering (applies to BOTH historical and live data) ──
+
+  const filteredEntries = useMemo(() => {
+    let result = rawEntries;
+
+    // Service filter — when services are selected, only show matching entries
+    if (selectedServiceIds.length > 0) {
+      const idSet = new Set(selectedServiceIds);
+      result = result.filter((e) => {
+        const svcId = (e.metadata?.serviceId as string) || '';
+        // Entries without serviceId: show when there's a text match in the service name
+        if (!svcId) return false;
+        return idSet.has(svcId);
+      });
+    }
+
+    // Source filter
+    if (sources.length > 0 && sources.length < ALL_SOURCES.length) {
+      result = result.filter((e) => sources.includes(e.source));
+    }
+
+    // Level filter
+    if (levels.length > 0 && levels.length < ALL_LEVELS.length) {
+      result = result.filter((e) => levels.includes(e.level));
+    }
+
+    // Search filter
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
+      result = result.filter(
+        (e) =>
+          e.message?.toLowerCase().includes(q) ||
+          e.source?.toLowerCase().includes(q) ||
+          (e.metadata?.serviceId as string)?.toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  }, [rawEntries, selectedServiceIds, sources, levels, debouncedSearch]);
 
   // ── Render ────────────────────────────────────────────────────────────
 
@@ -187,7 +212,7 @@ export default function LogViewer({ initialServiceId }: { initialServiceId?: str
           setLiveTail((prev) => !prev);
           setAutoScroll(true);
         }}
-        entryCount={entries.length}
+        entryCount={filteredEntries.length}
         isEmbedded={isEmbedded}
       />
 
@@ -200,12 +225,11 @@ export default function LogViewer({ initialServiceId }: { initialServiceId?: str
 
       {/* Volume Chart */}
       <LogVolumeChart
-        entries={entries}
+        entries={filteredEntries}
         services={servicesList}
         selectedServiceIds={selectedServiceIds}
         allServiceIds={allServiceIds}
         onClickServiceSegment={(segmentId) => {
-          // If it's a real service ID, toggle that service in the filter
           if (!segmentId.startsWith('source:')) {
             if (selectedServiceIds.includes(segmentId)) {
               setSelectedServiceIds(selectedServiceIds.filter((id) => id !== segmentId));
@@ -218,11 +242,11 @@ export default function LogViewer({ initialServiceId }: { initialServiceId?: str
 
       {/* Log Table */}
       <LogTable
-        entries={entries}
+        entries={filteredEntries}
         visibleColumns={visibleColumns}
         services={servicesList}
         allServiceIds={allServiceIds}
-        isLoading={isLoading}
+        isLoading={isLoading && rawEntries.length === 0}
         liveTail={liveTail}
         autoScroll={autoScroll}
         onAutoScrollChange={setAutoScroll}
