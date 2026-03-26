@@ -56,7 +56,7 @@ for (const mod of NATIVE_MODULES) {
     const modPath = join(source, mod);
     if (existsSync(modPath)) {
       console.log(`  → ${mod} (from ${source})`);
-      cpSync(modPath, join(OUTPUT, 'node_modules', mod), { recursive: true });
+      cpSync(modPath, join(OUTPUT, 'node_modules', mod), { recursive: true, dereference: true });
       found = true;
       break;
     }
@@ -71,7 +71,7 @@ for (const mod of NATIVE_MODULES) {
           const candidate = join(pnpmStore, entry, 'node_modules', mod);
           if (existsSync(candidate)) {
             console.log(`  → ${mod} (from pnpm store)`);
-            cpSync(candidate, join(OUTPUT, 'node_modules', mod), { recursive: true });
+            cpSync(candidate, join(OUTPUT, 'node_modules', mod), { recursive: true, dereference: true });
             found = true;
             break;
           }
@@ -85,7 +85,27 @@ for (const mod of NATIVE_MODULES) {
   }
 }
 
-// 5. Create package.json
+// 5. Hoist native .node binaries so `bindings` finds them from the bundle root
+//    bindings resolves relative to __dirname (= OUTPUT), looking in build/Release/
+console.log('→ Hoisting native .node binaries...');
+mkdirSync(join(OUTPUT, 'build', 'Release'), { recursive: true });
+function findNodeFiles(dir) {
+  const results = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory() || entry.isSymbolicLink()) results.push(...findNodeFiles(full));
+    else if (entry.name.endsWith('.node')) results.push(full);
+  }
+  return results;
+}
+for (const nodeFile of findNodeFiles(join(OUTPUT, 'node_modules'))) {
+  const name = nodeFile.split('/').pop();
+  const dest = join(OUTPUT, 'build', 'Release', name);
+  cpSync(nodeFile, dest);
+  console.log(`  → ${name}`);
+}
+
+// 6. Create package.json
 writeFileSync(
   join(OUTPUT, 'package.json'),
   JSON.stringify({
@@ -96,7 +116,7 @@ writeFileSync(
   }, null, 2),
 );
 
-// 6. Copy drizzle migrations
+// 7. Copy drizzle migrations
 const drizzleDir = join(BACKEND, 'drizzle');
 if (existsSync(drizzleDir)) {
   console.log('→ Copying drizzle migrations...');

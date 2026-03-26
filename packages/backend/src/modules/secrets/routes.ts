@@ -2,6 +2,9 @@ import { FastifyInstance } from 'fastify';
 import { KeychainSecretStore, type SecretStore } from './keychain.js';
 import { FallbackEncryptedStore } from './fallback-encrypted.js';
 import { createChildLogger } from '../../shared/logger.js';
+import { integrationConfigs } from '../../db/schema.js';
+import { eq } from 'drizzle-orm';
+import { ulid } from 'ulid';
 
 const log = createChildLogger('secrets-routes');
 
@@ -36,7 +39,35 @@ const PROVIDERS = [
   { id: 'semaphore', name: 'Semaphore', keys: ['semaphore_token'] },
 ];
 
+/** Map secret keys to the provider that should be auto-created */
+const SECRET_TO_PROVIDER: Record<string, { provider: string; name: string }> = {
+  github_token: { provider: 'github', name: 'GitHub' },
+  vercel_token: { provider: 'vercel', name: 'Vercel' },
+  digitalocean_token: { provider: 'digitalocean', name: 'DigitalOcean' },
+  semaphore_token: { provider: 'semaphore', name: 'Semaphore' },
+};
+
 export default async function secretsRoutes(app: FastifyInstance) {
+  /** Auto-create an IntegrationConfig if none exists for this provider */
+  function ensureIntegration(provider: string, name: string) {
+    const db = app.db;
+    const existing = db.select().from(integrationConfigs)
+      .where(eq(integrationConfigs.provider, provider)).all();
+    if (existing.length > 0) return;
+
+    const now = new Date().toISOString();
+    db.insert(integrationConfigs).values({
+      id: ulid(),
+      provider,
+      name,
+      enabled: true,
+      config: {},
+      syncIntervalSeconds: 10,
+      createdAt: now,
+      updatedAt: now,
+    }).run();
+    log.info({ provider }, 'Auto-created integration after secret save');
+  }
   // List secret providers and their status
   app.get('/secrets/providers', async (_request, reply) => {
     const s = await getStore();
@@ -86,6 +117,10 @@ export default async function secretsRoutes(app: FastifyInstance) {
           : `kubeconfig:${request.params.name}`;
       const s = await getStore();
       await s.set(key, request.body.value);
+
+      // Auto-create Kubernetes integration
+      ensureIntegration('kubernetes', 'Kubernetes');
+
       return reply.send({ key, saved: true });
     }
   );
@@ -131,6 +166,12 @@ export default async function secretsRoutes(app: FastifyInstance) {
 
       const s = await getStore();
       await s.set(key, value);
+
+      // Auto-create integration if this secret maps to a provider
+      const mapping = SECRET_TO_PROVIDER[key];
+      if (mapping) {
+        ensureIntegration(mapping.provider, mapping.name);
+      }
 
       return reply.send({ key, saved: true });
     }

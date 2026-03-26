@@ -16,15 +16,18 @@ export default defineConfig({
     'cpu-features',
   ],
   noExternal: [
-    // Bundle everything else (pure JS deps)
+    // Bundle ALL pure-JS deps into the single output file
+    // (external list above still takes precedence for native modules)
+    /.*/,
   ],
   banner: {
     // ESM compat: provide __dirname and __filename
-    js: `import { createRequire } from 'module';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-const require = createRequire(import.meta.url);
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);`,
+    // Use aliased import to avoid colliding with source-level `dirname` imports
+    js: `import { createRequire as __cjsCreateRequire } from 'module';
+import { fileURLToPath as __cjsFileURLToPath } from 'url';
+import { dirname as __cjsDirname } from 'path';
+const require = __cjsCreateRequire(import.meta.url);
+const __filename = __cjsFileURLToPath(import.meta.url);
+const __dirname = __cjsDirname(__filename);`,
   },
 });

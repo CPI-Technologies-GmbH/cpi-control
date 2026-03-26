@@ -547,6 +547,7 @@ export interface K8sEvent {
 
 export interface AppSettings {
   logBufferSize: number;
+  onboardingCompleted: boolean;
 }
 
 // ─── Vercel Types ─────────────────────────────────────────────────────────────

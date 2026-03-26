@@ -6,6 +6,7 @@ import type { DB } from '../../db/client.js';
 
 const DEFAULTS: Record<string, string> = {
   logBufferSize: '10000',
+  onboardingCompleted: 'false',
 };
 
 const VALIDATORS: Record<string, (v: string) => boolean> = {
@@ -13,12 +14,14 @@ const VALIDATORS: Record<string, (v: string) => boolean> = {
     const n = parseInt(v, 10);
     return !isNaN(n) && n >= 1000 && n <= 100000;
   },
+  onboardingCompleted: (v) => v === 'true' || v === 'false',
 };
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface AppSettingsMap {
   logBufferSize: number;
+  onboardingCompleted: boolean;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -40,6 +43,7 @@ export class SettingsService {
 
     return {
       logBufferSize: parseInt(map.logBufferSize ?? DEFAULTS.logBufferSize, 10),
+      onboardingCompleted: (map.onboardingCompleted ?? DEFAULTS.onboardingCompleted) === 'true',
     };
   }
 

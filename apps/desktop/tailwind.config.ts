@@ -14,6 +14,9 @@ const config: Config = {
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'onboarding-fade-in': 'onboarding-fade-in 0.5s ease-out forwards',
+        'onboarding-slide-right': 'onboarding-slide-in-right 0.4s ease-out',
+        'pulse-ring': 'pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
     },
   },
