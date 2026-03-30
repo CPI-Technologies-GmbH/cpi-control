@@ -113,7 +113,7 @@ export default function LogToolbar({
     if (config.columns) onColumnsChange(config.columns as LogColumn[]);
   }
 
-  function handleOpenInWindow() {
+  async function handleOpenInWindow() {
     const params = new URLSearchParams();
     if (selectedServiceIds.length > 0) {
       selectedServiceIds.forEach((id) => params.append('serviceId', id));
@@ -126,7 +126,14 @@ export default function LogToolbar({
 
     const qs = params.toString();
     const url = `/logs/live${qs ? `?${qs}` : ''}`;
-    window.open(url, '_blank', 'width=1200,height=800,menubar=no,toolbar=no');
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('open_log_window', { url });
+    } catch {
+      // Fallback for dev mode
+      window.open(url, '_blank', 'width=1200,height=800,menubar=no,toolbar=no');
+    }
   }
 
   return (

@@ -42,7 +42,7 @@ export default function Sidebar() {
       <div className="flex h-16 items-center justify-between px-4 border-b border-gray-800">
         {sidebarOpen && (
           <div className="flex items-center gap-2">
-            <Activity className="h-6 w-6 text-blue-500" />
+            <img src="/app-icon.png" alt="CPI-Control" className="h-6 w-6 rounded" />
             <span className="text-lg font-bold text-gray-100">CPI-Control</span>
           </div>
         )}

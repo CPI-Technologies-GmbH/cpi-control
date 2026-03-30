@@ -15,12 +15,13 @@ export function useService(id: string | undefined) {
     queryKey: ['services', id],
     queryFn: () => api.get(id!),
     enabled: !!id,
+    refetchInterval: 10_000,
   });
 }
 
 import type { HealthCheckResult } from '@/types';
 
-const BASE_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) || 'http://localhost:19876';
+const BASE_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) || 'http://127.0.0.1:19876';
 
 export function useServiceHealth(serviceId: string, params?: { since?: string; limit?: number; offset?: number }) {
   return useQuery({

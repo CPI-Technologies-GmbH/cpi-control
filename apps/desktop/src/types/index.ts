@@ -1,7 +1,7 @@
 // ─── Enums / Unions ────────────────────────────────────────────────────────
 
 export type Environment = 'production' | 'staging' | 'development';
-export type HostingType = 'vercel' | 'kubernetes' | 'digitalocean' | 'ovh' | 'github' | 'aws' | 'docker' | 'other';
+export type HostingType = 'vercel' | 'kubernetes' | 'digitalocean' | 'ovh' | 'github' | 'aws' | 'gcloud' | 'azure' | 'docker' | 'other';
 export type ServiceStatus = 'healthy' | 'degraded' | 'down' | 'unknown';
 export type ServiceType = 'website' | 'service';
 export type IncidentSeverity = 'critical' | 'warning' | 'info';
@@ -11,7 +11,7 @@ export type InfraProvider = 'vercel' | 'kubernetes' | 'digitalocean';
 export type RepoProvider = 'github' | 'bitbucket';
 export type DeploymentProvider = 'vercel' | 'github_actions' | 'semaphore' | 'kubernetes';
 export type DeploymentStatus = 'pending' | 'building' | 'deploying' | 'success' | 'failed' | 'cancelled';
-export type IntegrationProvider = 'github' | 'vercel' | 'digitalocean' | 'kubernetes' | 'slack' | 'bitbucket' | 'semaphore';
+export type IntegrationProvider = 'github' | 'vercel' | 'digitalocean' | 'kubernetes' | 'aws' | 'gcloud' | 'azure' | 'slack' | 'bitbucket' | 'semaphore';
 export type SyncStatus = 'success' | 'failed' | 'partial';
 export type AgentStatus = 'online' | 'offline' | 'installing' | 'error' | 'unknown';
 export type DiagnosticTrigger = 'manual' | 'automatic' | 'incident';
@@ -28,6 +28,7 @@ export interface Project {
   id: string;
   name: string;
   slug: string;
+  icon?: string | null;
   contactEmail?: string | null;
   contactPhone?: string | null;
   notes?: string | null;
@@ -50,6 +51,8 @@ export interface Service {
   checkIntervalSeconds?: number | null;
   tags?: string[] | null;
   metadata?: Record<string, unknown> | null;
+  archived?: boolean;
+  mutedUntil?: string | null; // ISO timestamp, 'forever', or null
   createdAt: string;
   updatedAt: string;
   // Joined fields (returned by API)
@@ -362,11 +365,13 @@ export interface ProjectStats {
 export interface ServiceFilters {
   projectId?: string;
   type?: ServiceType;
+  status?: ServiceStatus;
   environments?: Environment[];
   hostingTypes?: HostingType[];
   statuses?: ServiceStatus[];
   hasOpenIncident?: boolean;
   search?: string;
+  includeArchived?: string;
 }
 
 export interface IncidentFilters {
@@ -379,6 +384,7 @@ export interface IncidentFilters {
 
 export interface DeploymentFilters {
   serviceId?: string;
+  projectId?: string;
   provider?: DeploymentProvider[];
   status?: DeploymentStatus[];
   environment?: Environment[];
@@ -542,6 +548,26 @@ export interface K8sEvent {
   firstTimestamp: string;
   lastTimestamp: string;
   count: number;
+}
+
+// ─── License Types ────────────────────────────────────────────────────────────
+
+export type LicensePlan = 'free' | 'team' | 'unlimited';
+export type LicenseStatus = 'active' | 'expired' | 'grace' | 'free';
+
+export interface LicenseLimits {
+  maxServices: number;
+  maxAgents: number;
+}
+
+export interface LicenseInfo {
+  plan: LicensePlan;
+  status: LicenseStatus;
+  limits: LicenseLimits;
+  usage: { services: number; agents: number };
+  expiresAt?: string | null;
+  lastValidated?: string | null;
+  offlineSince?: string | null;
 }
 
 // ─── App Settings ─────────────────────────────────────────────────────────────

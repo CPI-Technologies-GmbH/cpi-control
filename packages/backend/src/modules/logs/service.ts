@@ -81,13 +81,15 @@ function journalPriorityToLogLevel(priority: string | number): LogLevel {
 function matchesFilter(entry: LogEntry, filter: LogFilter): boolean {
   // Source filter
   if (filter.source) {
-    const sources = Array.isArray(filter.source) ? filter.source : [filter.source];
+    const raw = Array.isArray(filter.source) ? filter.source : filter.source.split(',');
+    const sources = raw.map((s: string) => s.trim());
     if (!sources.includes(entry.source)) return false;
   }
 
   // Level filter
   if (filter.level) {
-    const levels = Array.isArray(filter.level) ? filter.level : [filter.level];
+    const raw = Array.isArray(filter.level) ? filter.level : filter.level.split(',');
+    const levels = raw.map((l: string) => l.trim());
     if (!levels.includes(entry.level)) return false;
   }
 
@@ -205,7 +207,12 @@ export class LogService {
   async getLogSources(): Promise<LogSourceInfo[]> {
     const [kubeconfigExists, sternExists, agentCount, vercelTokenExists, githubTokenExists] =
       await Promise.all([
-        this.secretStore.get('kubeconfig').then((v) => v !== null),
+        this.secretStore.get('kubeconfig').then(async (v) => {
+          if (v !== null) return true;
+          // Check for named kubeconfigs (kubeconfig:*)
+          const keys = await this.secretStore.list();
+          return keys.some((k: string) => k.startsWith('kubeconfig:'));
+        }),
         this.checkFileExists(STERN_PATH),
         this.countAgents(),
         this.secretStore.get('vercel_token').then((v) => v !== null),

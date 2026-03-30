@@ -46,6 +46,7 @@ export default function IntegrationsHub() {
   const [showValues, setShowValues] = useState<Record<string, boolean>>({});
   const [kubeconfigName, setKubeconfigName] = useState('');
   const [showKubeNameInput, setShowKubeNameInput] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
 
   // Fetch providers (secrets) and integrations
   const { data: providers, isLoading: providersLoading } = useQuery({
@@ -113,7 +114,8 @@ export default function IntegrationsHub() {
 
   const syncMutation = useMutation({
     mutationFn: (id: string) => intApi.sync(id),
-    onSuccess: () => {
+    onSettled: () => {
+      setSyncingId(null);
       qc.invalidateQueries({ queryKey: ['integrations'] });
     },
   });
@@ -237,14 +239,15 @@ export default function IntegrationsHub() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      setSyncingId(integration.id);
                       syncMutation.mutate(integration.id);
                     }}
-                    disabled={syncMutation.isPending}
+                    disabled={syncingId === integration.id}
                     className="btn-ghost text-xs flex items-center gap-1.5 py-1"
                   >
                     <RefreshCw
                       size={12}
-                      className={syncMutation.isPending ? 'animate-spin' : ''}
+                      className={syncingId === integration.id ? 'animate-spin' : ''}
                     />
                     Sync
                   </button>

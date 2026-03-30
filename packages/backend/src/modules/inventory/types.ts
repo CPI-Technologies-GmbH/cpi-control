@@ -1,6 +1,7 @@
 export interface CreateProjectBody {
   name: string;
   slug: string;
+  icon?: string;
   contactEmail?: string;
   contactPhone?: string;
   notes?: string;
@@ -10,6 +11,7 @@ export interface CreateProjectBody {
 export interface UpdateProjectBody {
   name?: string;
   slug?: string;
+  icon?: string;
   contactEmail?: string;
   contactPhone?: string;
   notes?: string;
@@ -45,6 +47,8 @@ export interface UpdateServiceBody {
   tags?: string[];
   metadata?: Record<string, unknown>;
   projectId?: string | null;
+  archived?: boolean;
+  mutedUntil?: string | null;
 }
 
 export interface BatchUpdateServicesBody {
@@ -53,6 +57,8 @@ export interface BatchUpdateServicesBody {
     environment?: string;
     type?: ServiceType;
     hostingType?: string;
+    archived?: boolean;
+    mutedUntil?: string | null;
   };
 }
 
@@ -64,6 +70,7 @@ export interface ServiceQueryParams {
   status?: string;
   hasOpenIncident?: string;
   search?: string;
+  includeArchived?: string;
   limit?: string;
   offset?: string;
 }

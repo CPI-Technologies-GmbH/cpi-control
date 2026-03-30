@@ -7,5 +7,6 @@ export function useProjectStats(projectId: string | undefined) {
     queryFn: () => projects.stats(projectId!),
     enabled: !!projectId,
     refetchInterval: 30_000,
+    placeholderData: (prev) => prev,
   });
 }

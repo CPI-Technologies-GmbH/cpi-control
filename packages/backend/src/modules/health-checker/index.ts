@@ -61,6 +61,8 @@ interface CheckResult {
   statusCode: number | null;
   responseTimeMs: number;
   errorMessage: string | null;
+  responseHeaders?: Record<string, string>;
+  responseBody?: string;
 }
 
 export class HealthChecker {
@@ -132,6 +134,7 @@ export class HealthChecker {
             type: websites.type,
             status: websites.status,
             url: websites.url,
+            archived: websites.archived,
           },
         })
         .from(monitoringTargets)
@@ -139,8 +142,8 @@ export class HealthChecker {
         .where(eq(monitoringTargets.enabled, true))
         .all();
 
-      // Filter: skip private services (type='service') - those get status from K8s/Vercel sync
-      const targets = rows.filter((row) => row.website.type !== 'service');
+      // Filter: skip private services and archived services
+      const targets = rows.filter((row) => row.website.type !== 'service' && !row.website.archived);
 
       if (targets.length === 0) {
         log.debug('No monitoring targets to check');
@@ -200,11 +203,21 @@ export class HealthChecker {
               statusCode: result.statusCode ?? undefined,
               responseTimeMs: result.responseTimeMs,
               errorMessage: result.errorMessage ?? undefined,
+              ...(result.responseHeaders && { responseHeaders: result.responseHeaders }),
+              ...(result.responseBody && { responseBody: result.responseBody }),
+              url: target.target,
             }
           );
 
+          // Check if service is muted — skip all notifications if so
+          const isMuted = (() => {
+            const svcRow = this.db.select({ mutedUntil: websites.mutedUntil }).from(websites).where(eq(websites.id, target.websiteId)).all()[0];
+            if (!svcRow?.mutedUntil) return false;
+            return svcRow.mutedUntil === 'forever' || new Date(svcRow.mutedUntil).getTime() > Date.now();
+          })();
+
           // Send notifications for new incidents (batched to prevent flood during cluster outages)
-          if (incidentResult.incidentCreated && this.notificationService) {
+          if (incidentResult.incidentCreated && this.notificationService && !isMuted) {
             this.notificationService.notifyBatched(
               'incident.created',
               `${website.name} is ${result.status}`,
@@ -220,7 +233,7 @@ export class HealthChecker {
           }
 
           // Send notifications for auto-resolved incidents (batched)
-          if (incidentResult.incidentResolved && this.notificationService) {
+          if (incidentResult.incidentResolved && this.notificationService && !isMuted) {
             this.notificationService.notifyBatched(
               'incident.resolved',
               `${website.name} has recovered`,
@@ -259,8 +272,13 @@ export class HealthChecker {
           'Website status updated'
         );
 
-        // Emit event when status actually changes (skip initial unknown -> X transitions)
-        if (website.status !== 'unknown' && website.status !== result.status) {
+        // Emit event when status actually changes (skip initial unknown -> X, skip muted services)
+        const svcMuted = (() => {
+          const row = this.db.select({ mutedUntil: websites.mutedUntil }).from(websites).where(eq(websites.id, target.websiteId)).all()[0];
+          if (!row?.mutedUntil) return false;
+          return row.mutedUntil === 'forever' || new Date(row.mutedUntil).getTime() > Date.now();
+        })();
+        if (website.status !== 'unknown' && website.status !== result.status && !svcMuted) {
           const eventTypeMap: Record<string, ServiceEventType> = {
             down: 'service.down',
             degraded: 'service.degraded',
@@ -334,11 +352,20 @@ export class HealthChecker {
       // 5xx → down
       const code = response.status;
 
+      // Capture response details for non-healthy results (for incident metadata)
+      const captureDetails = async () => {
+        const headers: Record<string, string> = {};
+        response.headers.forEach((v, k) => { headers[k] = v; });
+        let body = '';
+        try { body = await response.text(); } catch { /* ignore */ }
+        if (body.length > 15000) body = body.slice(0, 15000) + '\n... [truncated]';
+        return { responseHeaders: headers, responseBody: body };
+      };
+
       if (code === expectedStatusCode) {
         return { status: 'healthy', statusCode: code, responseTimeMs, errorMessage: null };
       }
       if (code >= 200 && code < 400) {
-        // 2xx/3xx but not the expected code — still healthy, just note the difference
         return {
           status: 'healthy',
           statusCode: code,
@@ -347,27 +374,29 @@ export class HealthChecker {
         };
       }
       if (code === 404) {
-        // 404 is treated as healthy — many services return 404 on their health endpoint root
         return { status: 'healthy', statusCode: code, responseTimeMs, errorMessage: null };
       }
       if (code === 401 || code === 403) {
-        // Auth-protected endpoints are running services — treat as healthy
         return { status: 'healthy', statusCode: code, responseTimeMs, errorMessage: 'Auth required' };
       }
       if (code >= 500) {
+        const details = await captureDetails();
         return {
           status: 'down',
           statusCode: code,
           responseTimeMs,
           errorMessage: `HTTP ${code}`,
+          ...details,
         };
       }
       // Other 4xx (429, etc.) → degraded
+      const details = await captureDetails();
       return {
         status: 'degraded',
         statusCode: code,
         responseTimeMs,
         errorMessage: `HTTP ${code}`,
+        ...details,
       };
     } catch (err: any) {
       const responseTimeMs = Date.now() - startTime;

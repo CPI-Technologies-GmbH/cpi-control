@@ -354,4 +354,17 @@ export function runMigrations(db: DB): void {
   } catch (_err) {
     // Migration already applied or not needed
   }
+
+  // Migration: add icon column to projects
+  try {
+    sqlite.exec(`ALTER TABLE customers ADD COLUMN icon TEXT`);
+  } catch (_err) { /* already exists */ }
+
+  // Migration: add archived and muted_until columns
+  try {
+    sqlite.exec(`ALTER TABLE websites ADD COLUMN archived INTEGER DEFAULT 0`);
+  } catch (_err) { /* already exists */ }
+  try {
+    sqlite.exec(`ALTER TABLE websites ADD COLUMN muted_until TEXT`);
+  } catch (_err) { /* already exists */ }
 }

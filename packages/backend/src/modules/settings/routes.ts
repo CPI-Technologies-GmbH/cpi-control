@@ -10,8 +10,40 @@ import {
   logViewConfigs,
 } from '../../db/schema.js';
 import { createChildLogger } from '../../shared/logger.js';
+import { KeychainSecretStore } from '../secrets/keychain.js';
+import { FallbackEncryptedStore } from '../secrets/fallback-encrypted.js';
+import type { SecretStore } from '../secrets/keychain.js';
 
 const log = createChildLogger('settings-routes');
+
+const GITHUB_REPO = 'CPI-Technologies-GmbH/cpi-control';
+const APP_VERSION = '0.1.0';
+
+let secretStore: SecretStore;
+async function getSecretStore(): Promise<SecretStore> {
+  if (secretStore) return secretStore;
+  const ks = new KeychainSecretStore();
+  if (await ks.init()) {
+    secretStore = ks;
+  } else {
+    secretStore = new FallbackEncryptedStore();
+  }
+  return secretStore;
+}
+
+interface GitHubRelease {
+  tag_name: string;
+  name: string;
+  body: string;
+  published_at: string;
+  draft: boolean;
+  prerelease: boolean;
+  assets: Array<{
+    name: string;
+    size: number;
+    browser_download_url: string;
+  }>;
+}
 
 export default async function settingsRoutes(app: FastifyInstance) {
   const settingsService = new SettingsService(app.db);
@@ -105,6 +137,85 @@ export default async function settingsRoutes(app: FastifyInstance) {
       });
     } catch (err: any) {
       log.error({ error: err.message }, 'Reset failed');
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
+  // GET /updates/app — Check for app updates via GitHub Releases
+  app.get('/updates/app', async (_request, reply) => {
+    try {
+      const store = await getSecretStore();
+      const token = await store.get('github_token');
+      const headers: Record<string, string> = {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'CPI-Control',
+      };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      const res = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/latest`,
+        { headers }
+      );
+      if (!res.ok) {
+        return reply.status(502).send({ error: `GitHub API error: ${res.status}` });
+      }
+      const release = (await res.json()) as GitHubRelease;
+
+      return reply.send({
+        currentVersion: APP_VERSION,
+        latestTag: release.tag_name,
+        latestName: release.name,
+        body: release.body,
+        publishedAt: release.published_at,
+        draft: release.draft,
+        prerelease: release.prerelease,
+        assets: release.assets.map((a) => ({
+          name: a.name,
+          size: a.size,
+          url: a.browser_download_url,
+        })),
+      });
+    } catch (err: any) {
+      log.error({ error: err.message }, 'App update check failed');
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
+  // GET /updates/agent — Check for agent updates via GitHub Releases
+  app.get('/updates/agent', async (_request, reply) => {
+    try {
+      const store = await getSecretStore();
+      const token = await store.get('github_token');
+      const headers: Record<string, string> = {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'CPI-Control',
+      };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      const res = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/agent-latest`,
+        { headers }
+      );
+      if (!res.ok) {
+        return reply.status(502).send({ error: `GitHub API error: ${res.status}` });
+      }
+      const release = (await res.json()) as GitHubRelease;
+
+      return reply.send({
+        latestTag: release.tag_name,
+        latestName: release.name,
+        body: release.body,
+        publishedAt: release.published_at,
+        draft: release.draft,
+        prerelease: release.prerelease,
+        assets: release.assets.map((a) => ({
+          name: a.name,
+          size: a.size,
+          url: a.browser_download_url,
+        })),
+      });
+    } catch (err: any) {
+      log.error({ error: err.message }, 'Agent update check failed');
       return reply.status(500).send({ error: err.message });
     }
   });

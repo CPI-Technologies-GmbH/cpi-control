@@ -78,10 +78,20 @@ export default function LogViewer({ initialServiceId }: { initialServiceId?: str
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, DEBOUNCE_MS);
 
-  // ── Column state ──────────────────────────────────────────────────────
-  const [visibleColumns, setVisibleColumns] = useState<LogColumn[]>(DEFAULT_COLUMNS);
+  // ── Column state (persisted to localStorage) ─────────────────────────
+  const [visibleColumns, setVisibleColumns] = useState<LogColumn[]>(() => {
+    try {
+      const saved = localStorage.getItem('opsboard:log-columns');
+      if (saved) return JSON.parse(saved) as LogColumn[];
+    } catch { /* ignore */ }
+    return DEFAULT_COLUMNS;
+  });
+  useEffect(() => {
+    localStorage.setItem('opsboard:log-columns', JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
 
   // ── Live tail / UI state ──────────────────────────────────────────────
+  const [showSidebar, setShowSidebar] = useState(true);
   const [liveTail, setLiveTail] = useState(true); // ON by default
   const [rawEntries, setRawEntries] = useState<LogEntry[]>([]);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -253,13 +263,25 @@ export default function LogViewer({ initialServiceId }: { initialServiceId?: str
       />
       </div>
 
-      {/* Service sidebar (hidden in embedded mode) */}
-      {!isEmbedded && (
+      {/* Service sidebar */}
+      {!isEmbedded && showSidebar && (
         <LogServiceSidebar
           services={servicesList}
           selectedIds={selectedServiceIds}
           onChange={setSelectedServiceIds}
+          onCollapse={() => setShowSidebar(false)}
         />
+      )}
+
+      {/* Sidebar reopen button (when collapsed) */}
+      {!isEmbedded && !showSidebar && (
+        <button
+          onClick={() => setShowSidebar(true)}
+          className="flex-shrink-0 self-start mt-1 px-2 py-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors border border-gray-700 text-xs"
+          title="Show services"
+        >
+          Services
+        </button>
       )}
     </div>
   );

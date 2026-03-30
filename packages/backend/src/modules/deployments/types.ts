@@ -1,5 +1,6 @@
 export interface DeploymentQueryParams {
   serviceId?: string;
+  projectId?: string;
   provider?: string | string[];
   status?: string | string[];
   environment?: string | string[];

@@ -21,6 +21,7 @@ export default function ProjectForm({ project, onSubmit, onCancel, isSubmitting 
   const [name, setName] = useState(project?.name ?? '');
   const [slug, setSlug] = useState(project?.slug ?? '');
   const [slugTouched, setSlugTouched] = useState(false);
+  const [icon, setIcon] = useState(project?.icon ?? '');
   const [contactEmail, setContactEmail] = useState(project?.contactEmail ?? '');
   const [contactPhone, setContactPhone] = useState(project?.contactPhone ?? '');
   const [notes, setNotes] = useState(project?.notes ?? '');
@@ -30,6 +31,7 @@ export default function ProjectForm({ project, onSubmit, onCancel, isSubmitting 
     if (project) {
       setName(project.name);
       setSlug(project.slug ?? '');
+      setIcon(project.icon ?? '');
       setContactEmail(project.contactEmail ?? '');
       setContactPhone(project.contactPhone ?? '');
       setNotes(project.notes ?? '');
@@ -68,6 +70,7 @@ export default function ProjectForm({ project, onSubmit, onCancel, isSubmitting 
     onSubmit({
       name: name.trim(),
       slug: slug.trim(),
+      icon: icon.trim() || null,
       contactEmail: contactEmail.trim() || null,
       contactPhone: contactPhone.trim() || null,
       notes: notes.trim() || null,
@@ -116,6 +119,19 @@ export default function ProjectForm({ project, onSubmit, onCancel, isSubmitting 
           />
           <p className="text-xs text-gray-600 mt-1">Auto-generated from name. Used as unique identifier.</p>
           {errors.slug && <p className="text-xs text-red-400 mt-1">{errors.slug}</p>}
+        </div>
+
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Icon</label>
+          <input
+            type="text"
+            value={icon}
+            onChange={(e) => setIcon(e.target.value)}
+            className="input w-20 text-center text-lg"
+            placeholder="🚀"
+            maxLength={4}
+          />
+          <p className="text-xs text-gray-600 mt-1">Emoji or short text (e.g. 🚀, 💼, V)</p>
         </div>
 
         <div>

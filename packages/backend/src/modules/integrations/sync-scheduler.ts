@@ -1,4 +1,5 @@
 import { createChildLogger } from '../../shared/logger.js';
+import { parseKubeconfig } from '../../shared/kubeconfig-parser.js';
 import { eventBus, type DeploymentEventType, type ServiceEventType } from '../../shared/event-bus.js';
 import type { DB } from '../../db/client.js';
 import type { ProviderAdapter, SyncOptions, SyncResult } from '../../shared/provider-interface.js';
@@ -18,210 +19,6 @@ import { eq, and, isNotNull } from 'drizzle-orm';
 import type { SyncedDeployment } from '../../shared/provider-interface.js';
 
 const log = createChildLogger('sync-scheduler');
-
-/** Extract a YAML value from "key: value" (handles quoted strings) */
-function yamlValue(line: string): string {
-  const idx = line.indexOf(':');
-  if (idx === -1) return '';
-  return line.slice(idx + 1).trim().replace(/^['"]|['"]$/g, '');
-}
-
-/** Parse kubeconfig YAML content to extract apiServer, token, caCert, clientCert, clientKey.
- *  Respects current-context to select the correct cluster and user. */
-function parseKubeconfig(content: string): {
-  apiServer?: string;
-  token?: string;
-  caCert?: string;
-  clientCert?: string;
-  clientKey?: string;
-} {
-  const lines = content.split('\n');
-
-  // Step 1: Find current-context
-  let currentContext = '';
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith('current-context:')) {
-      currentContext = yamlValue(trimmed);
-      break;
-    }
-  }
-
-  // Step 2: Parse contexts to find which cluster name and user name the current-context uses
-  let targetCluster = '';
-  let targetUser = '';
-  {
-    let inContexts = false;
-    let inContextBlock = false;
-    let contextName = '';
-    let clusterName = '';
-    let userName = '';
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      // Top-level keys (no indentation)
-      if (line.match(/^\S/) && trimmed.startsWith('contexts:')) {
-        inContexts = true;
-        inContextBlock = false;
-        continue;
-      }
-      // Another top-level key ends the contexts section
-      if (inContexts && line.match(/^\S/) && !trimmed.startsWith('-')) {
-        inContexts = false;
-        continue;
-      }
-      if (!inContexts) continue;
-
-      // New list item in contexts
-      if (trimmed.startsWith('- context:') || trimmed === '- context:') {
-        // Save previous context if matched
-        if (inContextBlock && contextName === currentContext) {
-          targetCluster = clusterName;
-          targetUser = userName;
-        }
-        inContextBlock = true;
-        contextName = '';
-        clusterName = '';
-        userName = '';
-        continue;
-      }
-      if (inContextBlock) {
-        if (trimmed.startsWith('cluster:')) {
-          clusterName = yamlValue(trimmed);
-        } else if (trimmed.startsWith('user:')) {
-          userName = yamlValue(trimmed);
-        } else if (trimmed.startsWith('name:')) {
-          contextName = yamlValue(trimmed);
-        }
-      }
-    }
-    // Check last context block
-    if (inContextBlock && contextName === currentContext) {
-      targetCluster = clusterName;
-      targetUser = userName;
-    }
-  }
-
-  // Step 3: Parse clusters to find the matching cluster's server, ca-cert
-  let apiServer: string | undefined;
-  let caCert: string | undefined;
-  {
-    let inClusters = false;
-    let inClusterBlock = false;
-    let clusterName = '';
-    let server = '';
-    let ca = '';
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (line.match(/^\S/) && trimmed.startsWith('clusters:')) {
-        inClusters = true;
-        inClusterBlock = false;
-        continue;
-      }
-      if (inClusters && line.match(/^\S/) && !trimmed.startsWith('-')) {
-        inClusters = false;
-        continue;
-      }
-      if (!inClusters) continue;
-
-      if (trimmed.startsWith('- cluster:') || trimmed === '- cluster:') {
-        // Save previous
-        if (inClusterBlock && clusterName === targetCluster) {
-          apiServer = server || undefined;
-          caCert = ca || undefined;
-        }
-        inClusterBlock = true;
-        clusterName = '';
-        server = '';
-        ca = '';
-        continue;
-      }
-      if (inClusterBlock) {
-        if (trimmed.startsWith('server:')) {
-          server = yamlValue(trimmed);
-        } else if (trimmed.startsWith('certificate-authority-data:')) {
-          ca = yamlValue(trimmed);
-        } else if (trimmed.startsWith('name:')) {
-          clusterName = yamlValue(trimmed);
-        }
-      }
-    }
-    if (inClusterBlock && clusterName === targetCluster) {
-      apiServer = server || undefined;
-      caCert = ca || undefined;
-    }
-  }
-
-  // Step 4: Parse users to find the matching user's token, client-cert, client-key
-  let token: string | undefined;
-  let clientCert: string | undefined;
-  let clientKey: string | undefined;
-  {
-    let inUsers = false;
-    let inUserBlock = false;
-    let userName = '';
-    let userToken = '';
-    let cert = '';
-    let key = '';
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (line.match(/^\S/) && trimmed.startsWith('users:')) {
-        inUsers = true;
-        inUserBlock = false;
-        continue;
-      }
-      if (inUsers && line.match(/^\S/) && !trimmed.startsWith('-')) {
-        inUsers = false;
-        continue;
-      }
-      if (!inUsers) continue;
-
-      if (trimmed.startsWith('- name:')) {
-        // Save previous
-        if (inUserBlock && userName === targetUser) {
-          token = userToken || undefined;
-          clientCert = cert || undefined;
-          clientKey = key || undefined;
-        }
-        inUserBlock = true;
-        userName = yamlValue(trimmed);
-        userToken = '';
-        cert = '';
-        key = '';
-        continue;
-      }
-      if (inUserBlock) {
-        if (trimmed.startsWith('token:')) {
-          userToken = yamlValue(trimmed);
-        } else if (trimmed.startsWith('client-certificate-data:')) {
-          cert = yamlValue(trimmed);
-        } else if (trimmed.startsWith('client-key-data:')) {
-          key = yamlValue(trimmed);
-        }
-      }
-    }
-    if (inUserBlock && userName === targetUser) {
-      token = userToken || undefined;
-      clientCert = cert || undefined;
-      clientKey = key || undefined;
-    }
-  }
-
-  // Fallback: if no current-context matched, just grab the first server found
-  if (!apiServer) {
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('server:')) {
-        apiServer = yamlValue(trimmed);
-        break;
-      }
-    }
-  }
-
-  return { apiServer, token, caCert, clientCert, clientKey };
-}
 
 /** Maps provider name to which secret keys become which config fields */
 const SECRET_MAPPING: Record<string, Record<string, string>> = {
@@ -273,7 +70,8 @@ export class SyncScheduler {
       }
     }
 
-    // Special handling for kubernetes: if no plain 'kubeconfig' secret, try named kubeconfigs (kubeconfig:*)
+    // For kubernetes: kubeconfig parsing is handled separately in resolveAllK8sConfigs
+    // Here we just handle the single kubeconfig case for backwards compat
     if (provider === 'kubernetes' && !resolved.kubeconfig && this.secretStore) {
       const allKeys = await this.secretStore.list();
       const namedKey = allKeys.find((k) => k.startsWith('kubeconfig:'));
@@ -288,31 +86,72 @@ export class SyncScheduler {
 
     // Parse kubeconfig to extract apiServer, token, caCert, clientCert, clientKey
     if (provider === 'kubernetes' && typeof resolved.kubeconfig === 'string' && !resolved.apiServer) {
-      const kubeconfigContent = resolved.kubeconfig;
-      const parsed = parseKubeconfig(kubeconfigContent);
-      if (parsed.apiServer) {
-        resolved.apiServer = parsed.apiServer;
-        log.info({ apiServer: parsed.apiServer }, 'Parsed apiServer from kubeconfig');
-      }
-      if (parsed.token && !resolved.token) {
-        resolved.token = parsed.token;
-        log.info('Parsed token from kubeconfig');
-      }
-      if (parsed.caCert && !resolved.caCert) {
-        resolved.caCert = parsed.caCert;
-        log.info('Parsed caCert from kubeconfig');
-      }
-      if (parsed.clientCert && !resolved.clientCert) {
-        resolved.clientCert = parsed.clientCert;
-        log.info('Parsed clientCert from kubeconfig');
-      }
-      if (parsed.clientKey && !resolved.clientKey) {
-        resolved.clientKey = parsed.clientKey;
-        log.info('Parsed clientKey from kubeconfig');
-      }
+      this.applyKubeconfigFields(resolved);
     }
 
     return resolved;
+  }
+
+  /** Apply parsed kubeconfig fields (apiServer, token, certs) to a resolved config */
+  private applyKubeconfigFields(resolved: Record<string, unknown>): void {
+    const kubeconfigContent = resolved.kubeconfig as string;
+    const parsed = parseKubeconfig(kubeconfigContent);
+    if (parsed.apiServer) {
+      resolved.apiServer = parsed.apiServer;
+      log.info({ apiServer: parsed.apiServer }, 'Parsed apiServer from kubeconfig');
+    }
+    if (parsed.token && !resolved.token) {
+      resolved.token = parsed.token;
+      log.info('Parsed token from kubeconfig');
+    }
+    if (parsed.caCert && !resolved.caCert) {
+      resolved.caCert = parsed.caCert;
+      log.info('Parsed caCert from kubeconfig');
+    }
+    if (parsed.clientCert && !resolved.clientCert) {
+      resolved.clientCert = parsed.clientCert;
+      log.info('Parsed clientCert from kubeconfig');
+    }
+    if (parsed.clientKey && !resolved.clientKey) {
+      resolved.clientKey = parsed.clientKey;
+      log.info('Parsed clientKey from kubeconfig');
+    }
+  }
+
+  /** For kubernetes: resolve ALL named kubeconfigs into separate config objects */
+  private async resolveAllK8sConfigs(baseConfig: Record<string, unknown>): Promise<Record<string, unknown>[]> {
+    if (!this.secretStore) return [baseConfig];
+
+    const allKeys = await this.secretStore.list();
+    const kubeconfigKeys = allKeys.filter((k) => k.startsWith('kubeconfig:'));
+
+    if (kubeconfigKeys.length === 0) {
+      // Fall back to plain 'kubeconfig' key
+      const plain = await this.secretStore.get('kubeconfig');
+      if (plain) {
+        const cfg = { ...baseConfig, kubeconfig: plain };
+        this.applyKubeconfigFields(cfg);
+        return [cfg];
+      }
+      return [baseConfig];
+    }
+
+    const configs: Record<string, unknown>[] = [];
+    for (const key of kubeconfigKeys) {
+      const value = await this.secretStore.get(key);
+      if (!value) continue;
+      const clusterName = key.slice('kubeconfig:'.length);
+      const cfg: Record<string, unknown> = { ...baseConfig, kubeconfig: value, apiServer: undefined, token: undefined, caCert: undefined, clientCert: undefined, clientKey: undefined, clusterName };
+      this.applyKubeconfigFields(cfg);
+      if (cfg.apiServer) {
+        log.info({ key, clusterName, apiServer: cfg.apiServer }, 'Resolved named kubeconfig');
+        configs.push(cfg);
+      } else {
+        log.warn({ key, clusterName }, 'Kubeconfig skipped: failed to extract apiServer');
+      }
+    }
+
+    return configs.length > 0 ? configs : [baseConfig];
   }
 
   registerAdapter(provider: string, adapter: ProviderAdapter): void {
@@ -394,28 +233,19 @@ export class SyncScheduler {
 
     try {
       await integrationService.updateSyncStatus(this.db, integrationId, 'running');
-      const resolvedConfig = await this.resolveSecrets(
-        integration.provider,
-        (integration.config as Record<string, unknown>) || {}
-      );
-      const result = await adapter.sync(resolvedConfig, options || {});
+      const baseConfig = (integration.config as Record<string, unknown>) || {};
 
-      // Auto-discover services from synced deployments, then persist and update statuses
-      if (result.data?.deployments?.length || result.data?.k8sServices?.length) {
-        this.autoDiscoverServices(result.data.deployments || [], integration.provider, result);
-
-        const persisted = this.persistDeployments(result);
-        log.info(
-          { integrationId, deploymentsStored: persisted },
-          'Persisted deployment records from sync'
-        );
-
-        // Update service statuses based on provider data
-        this.updateServiceStatuses(result, integration.provider);
+      // For kubernetes: sync ALL kubeconfigs, merge results
+      if (integration.provider === 'kubernetes') {
+        const k8sConfigs = await this.resolveAllK8sConfigs(baseConfig);
+        log.info({ clusterCount: k8sConfigs.length }, 'Syncing all Kubernetes clusters');
+        return await this.syncMultipleK8sConfigs(integrationId, adapter, k8sConfigs, options || {});
       }
 
-      // Ensure monitoring targets exist for all public services with URLs
-      this.ensureMonitoringTargets();
+      const resolvedConfig = await this.resolveSecrets(integration.provider, baseConfig);
+      const result = await adapter.sync(resolvedConfig, options || {});
+
+      this.processResult(result, integrationId, integration.provider);
 
       if (result.success) {
         await integrationService.updateSyncStatus(this.db, integrationId, 'success');
@@ -428,6 +258,91 @@ export class SyncScheduler {
     } catch (err: any) {
       await integrationService.updateSyncStatus(this.db, integrationId, 'failed', err.message);
       return { success: false, message: err.message };
+    }
+  }
+
+  /** Process a sync result: auto-discover services, persist deployments, update statuses */
+  private processResult(result: SyncResult, integrationId: string, provider: string): void {
+    if (result.data?.deployments?.length || result.data?.k8sServices?.length) {
+      this.autoDiscoverServices(result.data.deployments || [], provider, result);
+
+      const persisted = this.persistDeployments(result);
+      log.info(
+        { integrationId, deploymentsStored: persisted },
+        'Persisted deployment records from sync'
+      );
+
+      this.updateServiceStatuses(result, provider);
+    }
+
+    this.ensureMonitoringTargets();
+  }
+
+  /** Sync multiple K8s clusters and merge results into one */
+  private async syncMultipleK8sConfigs(
+    integrationId: string,
+    adapter: ProviderAdapter,
+    configs: Record<string, unknown>[],
+    options: SyncOptions
+  ): Promise<{ success: boolean; message: string }> {
+    let totalItemsSynced = 0;
+    let totalDurationMs = 0;
+    const allErrors: string[] = [];
+    let anySuccess = false;
+
+    for (const cfg of configs) {
+      try {
+        const clusterName = cfg.clusterName as string | undefined;
+        const result = await adapter.sync(cfg, options);
+        totalItemsSynced += result.itemsSynced;
+        totalDurationMs += result.durationMs;
+
+        // Inject clusterName into sync result data so it flows into autoDiscoverServices
+        if (clusterName && result.data) {
+          if (result.data.k8sServices) {
+            for (const svc of result.data.k8sServices) {
+              (svc as any).clusterName = clusterName;
+            }
+          }
+          if (result.data.deployments) {
+            for (const dep of result.data.deployments) {
+              if (dep.metadata) {
+                (dep.metadata as any).clusterName = clusterName;
+              }
+            }
+          }
+          if (result.data.k8sIngresses) {
+            for (const ing of result.data.k8sIngresses) {
+              (ing as any).clusterName = clusterName;
+            }
+          }
+          if (result.data.k8sCronJobs) {
+            for (const cj of result.data.k8sCronJobs) {
+              (cj as any).clusterName = clusterName;
+            }
+          }
+        }
+
+        this.processResult(result, integrationId, 'kubernetes');
+
+        if (result.success) {
+          anySuccess = true;
+        } else {
+          allErrors.push(...result.errors.map((e) => e.error));
+        }
+      } catch (err: any) {
+        allErrors.push(`Cluster ${(cfg.apiServer as string) || 'unknown'}: ${err.message}`);
+        log.warn({ apiServer: cfg.apiServer, error: err.message }, 'Failed to sync K8s cluster');
+      }
+    }
+
+    if (anySuccess) {
+      await integrationService.updateSyncStatus(this.db, integrationId, 'success');
+      return { success: true, message: `Synced ${totalItemsSynced} items across ${configs.length} clusters in ${totalDurationMs}ms` };
+    } else {
+      const errorMsg = allErrors.join('; ') || 'All clusters failed to sync';
+      await integrationService.updateSyncStatus(this.db, integrationId, 'failed', errorMsg);
+      return { success: false, message: errorMsg };
     }
   }
 
@@ -588,6 +503,7 @@ export class SyncScheduler {
         const isPublic = !!ingress;
         const url = ingress?.hosts[0] ? `https://${ingress.hosts[0]}` : undefined;
 
+        const clusterName = (svc as any).clusterName as string | undefined;
         const projectKey = `k8s:${svc.namespace}/${svc.name}`;
         discoveredProjects.set(projectKey, {
           name: svc.name,
@@ -602,6 +518,7 @@ export class SyncScheduler {
             hasIngress: isPublic,
             ingressHosts: ingress?.hosts || [],
             isPublic,
+            ...(clusterName && { clusterName }),
           },
           hasIngress: isPublic,
           ingressHosts: ingress?.hosts || [],
@@ -790,6 +707,7 @@ export class SyncScheduler {
 
             // If no K8s binding exists yet for this service, create one
             if (existingBindings.length === 0) {
+              const bindingClusterName = proj.metadata.clusterName as string | undefined;
               this.db.insert(infrastructureBindings).values({
                 id: ulid(),
                 websiteId: svc.id,
@@ -797,7 +715,7 @@ export class SyncScheduler {
                 externalId: correctExternalId,
                 resourceType: 'deployment',
                 region: null,
-                metadata: null,
+                metadata: bindingClusterName ? { clusterName: bindingClusterName } : null,
                 createdAt: now,
                 updatedAt: now,
               }).run();
@@ -953,6 +871,7 @@ export class SyncScheduler {
             const namespace = proj.metadata.namespace as string || 'default';
             bindingExternalId = `${namespace}/${proj.name}`;
           }
+          const bindingClusterName = proj.metadata.clusterName as string | undefined;
           this.db.insert(infrastructureBindings).values({
             id: ulid(),
             websiteId: serviceId,
@@ -960,7 +879,7 @@ export class SyncScheduler {
             externalId: bindingExternalId,
             resourceType: provider === 'kubernetes' ? 'deployment' : 'project',
             region: null,
-            metadata: null,
+            metadata: bindingClusterName ? { clusterName: bindingClusterName } : null,
             createdAt: now,
             updatedAt: now,
           }).run();

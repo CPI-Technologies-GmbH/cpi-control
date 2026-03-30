@@ -1,11 +1,28 @@
-import { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
+import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useServices, useBatchUpdateServices, useDeleteService, useBatchDeleteServices } from '@/hooks/useServices';
 import { statusDotColor, formatRelativeTime, formatMs } from '@/lib/formatters';
 import { ProviderIcon } from '@/components/icons/ProviderIcons';
-import { Search, ExternalLink, Globe, Lock, Trash2, X } from 'lucide-react';
+import { Search, ExternalLink, Globe, Lock, Trash2, X, Archive, BellOff } from 'lucide-react';
 import clsx from 'clsx';
-import type { ServiceFilters, ServiceType, Environment } from '@/types';
+import type { ServiceFilters, ServiceType, ServiceStatus, Environment } from '@/types';
+
+const statusOptions: { value: ServiceStatus | 'all'; label: string; color: string }[] = [
+  { value: 'all', label: 'All', color: '' },
+  { value: 'healthy', label: 'Healthy', color: 'bg-green-500' },
+  { value: 'degraded', label: 'Degraded', color: 'bg-yellow-500' },
+  { value: 'down', label: 'Down', color: 'bg-red-500' },
+  { value: 'unknown', label: 'Unknown', color: 'bg-gray-500' },
+];
+
+const muteOptions = [
+  { label: '1h', value: 1 },
+  { label: '12h', value: 12 },
+  { label: '1 Tag', value: 24 },
+  { label: '7 Tage', value: 24 * 7 },
+  { label: 'Permanent', value: -1 },
+];
 
 const typeOptions: { value: ServiceType | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -19,9 +36,16 @@ const batchTypeOptions: { value: ServiceType; label: string }[] = [
   { value: 'service', label: 'Private' },
 ];
 
+type SortKey = 'name' | 'status' | 'type' | 'project' | 'environment' | 'hosting';
+type SortDir = 'asc' | 'desc';
+
 export default function ServiceList({ projectId }: { projectId?: string }) {
   const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [typeFilter, setTypeFilter] = useState<ServiceType | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<ServiceStatus | 'all'>('all');
+  const [showArchived, setShowArchived] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchUpdating, setBatchUpdating] = useState(false);
 
@@ -29,6 +53,8 @@ export default function ServiceList({ projectId }: { projectId?: string }) {
     ...(projectId && { projectId }),
     ...(search && { search }),
     ...(typeFilter !== 'all' && { type: typeFilter }),
+    ...(statusFilter !== 'all' && { status: statusFilter }),
+    ...(showArchived && { includeArchived: 'true' }),
   };
 
   const { data: services, isLoading, error } = useServices(filters);
@@ -101,7 +127,63 @@ export default function ServiceList({ projectId }: { projectId?: string }) {
     }
   }, [selectedIds, batchDelete, clearSelection]);
 
-  const isAllSelected = services && services.length > 0 && selectedIds.size === services.length;
+  const handleBatchArchive = useCallback(async () => {
+    setBatchUpdating(true);
+    try {
+      await batchUpdate.mutateAsync({
+        ids: Array.from(selectedIds),
+        updates: { archived: true },
+      });
+      clearSelection();
+    } finally {
+      setBatchUpdating(false);
+    }
+  }, [selectedIds, batchUpdate, clearSelection]);
+
+  const handleBatchMute = useCallback(async (hours: number) => {
+    const mutedUntil = hours === -1
+      ? 'forever'
+      : new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+    setBatchUpdating(true);
+    try {
+      await batchUpdate.mutateAsync({
+        ids: Array.from(selectedIds),
+        updates: { mutedUntil },
+      });
+      clearSelection();
+    } finally {
+      setBatchUpdating(false);
+    }
+  }, [selectedIds, batchUpdate, clearSelection]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  }
+
+  const sortedServices = React.useMemo(() => {
+    if (!services) return [];
+    return [...services].sort((a, b) => {
+      let va: string, vb: string;
+      switch (sortKey) {
+        case 'name': va = a.name; vb = b.name; break;
+        case 'status': va = a.status; vb = b.status; break;
+        case 'type': va = a.type; vb = b.type; break;
+        case 'project': va = a.projectName || ''; vb = b.projectName || ''; break;
+        case 'environment': va = a.environment; vb = b.environment; break;
+        case 'hosting': va = a.hostingType; vb = b.hostingType; break;
+        default: va = a.name; vb = b.name;
+      }
+      const cmp = va.localeCompare(vb);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [services, sortKey, sortDir]);
+
+  const isAllSelected = sortedServices.length > 0 && selectedIds.size === sortedServices.length;
   const hasSelection = selectedIds.size > 0;
 
   return (
@@ -134,6 +216,35 @@ export default function ServiceList({ projectId }: { projectId?: string }) {
             </button>
           ))}
         </div>
+        <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-0.5">
+          {statusOptions.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setStatusFilter(opt.value)}
+              className={clsx(
+                'px-2 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1',
+                statusFilter === opt.value
+                  ? 'bg-gray-700 text-gray-200'
+                  : 'text-gray-500 hover:text-gray-300'
+              )}
+            >
+              {opt.color && <span className={clsx('w-1.5 h-1.5 rounded-full', opt.color)} />}
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setShowArchived(!showArchived)}
+          className={clsx(
+            'flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-colors border',
+            showArchived
+              ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+              : 'text-gray-500 border-gray-700 hover:text-gray-300'
+          )}
+        >
+          <Archive size={12} />
+          Archived
+        </button>
       </div>
 
       {/* Batch action bar */}
@@ -183,6 +294,36 @@ export default function ServiceList({ projectId }: { projectId?: string }) {
               ))}
             </select>
           </div>
+
+          {/* Mute dropdown */}
+          <div className="relative">
+            <select
+              disabled={batchUpdating}
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleBatchMute(parseInt(e.target.value));
+                  e.target.value = '';
+                }
+              }}
+              className="input py-1 px-2 text-xs pr-6 appearance-none bg-gray-800 border-gray-700 text-gray-300 cursor-pointer disabled:opacity-50"
+            >
+              <option value="" disabled>Mute</option>
+              {muteOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Archive */}
+          <button
+            onClick={handleBatchArchive}
+            disabled={batchUpdating}
+            className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+          >
+            <Archive size={12} />
+            Archive
+          </button>
 
           {/* Delete Selected */}
           <button
@@ -239,7 +380,7 @@ export default function ServiceList({ projectId }: { projectId?: string }) {
       )}
 
       {/* Service table */}
-      {services && services.length > 0 && (
+      {sortedServices.length > 0 && (
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -252,35 +393,32 @@ export default function ServiceList({ projectId }: { projectId?: string }) {
                     className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500/30 focus:ring-offset-0 cursor-pointer"
                   />
                 </th>
-                <th className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium">
-                  Status
+                {([
+                  ['status', 'Status'],
+                  ['name', 'Service'],
+                  ['type', 'Type'],
+                ] as [SortKey, string][]).map(([key, label]) => (
+                  <th key={key} className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium cursor-pointer select-none hover:text-gray-300" onClick={() => toggleSort(key)}>
+                    <span className="flex items-center gap-1">
+                      {label}
+                      {sortKey === key ? (sortDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} className="opacity-30" />}
+                    </span>
+                  </th>
+                ))}
+                <th className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium cursor-pointer select-none hover:text-gray-300" onClick={() => toggleSort('project')}>
+                  <span className="flex items-center gap-1">Project {sortKey === 'project' ? (sortDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} className="opacity-30" />}</span>
                 </th>
-                <th className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium">
-                  Service
+                <th className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium cursor-pointer select-none hover:text-gray-300" onClick={() => toggleSort('environment')}>
+                  <span className="flex items-center gap-1">Environment {sortKey === 'environment' ? (sortDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} className="opacity-30" />}</span>
                 </th>
-                <th className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium">
-                  Type
-                </th>
-                <th className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium">
-                  Project
-                </th>
-                <th className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium">
-                  Environment
-                </th>
-                <th className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium">
-                  Hosting
-                </th>
-                <th className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium">
-                  Response
-                </th>
-                <th className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium">
-                  Last Check
+                <th className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide font-medium cursor-pointer select-none hover:text-gray-300" onClick={() => toggleSort('hosting')}>
+                  <span className="flex items-center gap-1">Hosting {sortKey === 'hosting' ? (sortDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} className="opacity-30" />}</span>
                 </th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/50">
-              {services.map((s) => (
+              {sortedServices.map((s) => (
                 <tr
                   key={s.id}
                   className={clsx(
@@ -305,12 +443,22 @@ export default function ServiceList({ projectId }: { projectId?: string }) {
                     />
                   </td>
                   <td className="px-4 py-3">
-                    <Link
-                      to={`/services/${s.id}`}
-                      className="text-gray-200 hover:text-blue-400 font-medium transition-colors"
-                    >
-                      {s.name}
-                    </Link>
+                    <div className="flex items-center gap-1.5">
+                      <Link
+                        to={`/services/${s.id}`}
+                        className="text-gray-200 hover:text-blue-400 font-medium transition-colors"
+                      >
+                        {s.name}
+                      </Link>
+                      {s.mutedUntil && (s.mutedUntil === 'forever' || new Date(s.mutedUntil) > new Date()) && (
+                        <span title={s.mutedUntil === 'forever' ? 'Permanent muted' : `Muted until ${new Date(s.mutedUntil).toLocaleString('de-DE')}`}>
+                          <BellOff size={12} className="text-amber-400/70" />
+                        </span>
+                      )}
+                    </div>
+                    {(s.metadata as any)?.clusterName && (
+                      <span className="text-[10px] text-cyan-400/70">{(s.metadata as any).clusterName}</span>
+                    )}
                     {s.type === 'website' && s.url && (
                       <p className="text-xs text-gray-500 truncate max-w-xs">{s.url}</p>
                     )}
@@ -329,7 +477,18 @@ export default function ServiceList({ projectId }: { projectId?: string }) {
                       )}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-400">{s.projectName || '\u2014'}</td>
+                  <td className="px-4 py-3">
+                    {s.projectName ? (
+                      <Link
+                        to={`/projects/${s.projectId}`}
+                        className="badge bg-cyan-500/10 text-cyan-400 border-cyan-500/20 text-[10px] hover:bg-cyan-500/20 transition-colors"
+                      >
+                        {s.projectName}
+                      </Link>
+                    ) : (
+                      <span className="text-gray-600">{'\u2014'}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span className="badge bg-gray-700/50 text-gray-400 border-gray-600/50">
                       {s.environment}
@@ -340,12 +499,6 @@ export default function ServiceList({ projectId }: { projectId?: string }) {
                       <ProviderIcon provider={s.hostingType} size={14} />
                       {s.hostingType}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-300 font-mono text-xs">
-                    {formatMs(s.lastResponseTimeMs)}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
-                    {formatRelativeTime(s.lastCheckedAt)}
                   </td>
                   <td className="px-4 py-3">
                     {s.type === 'website' && s.url ? (

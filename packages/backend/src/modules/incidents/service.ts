@@ -180,7 +180,7 @@ export class IncidentDetector {
   async processHealthCheck(
     serviceId: string,
     status: 'healthy' | 'degraded' | 'down',
-    details?: { statusCode?: number; responseTimeMs?: number; errorMessage?: string }
+    details?: { statusCode?: number; responseTimeMs?: number; errorMessage?: string; responseHeaders?: Record<string, string>; responseBody?: string; url?: string }
   ): Promise<{ incidentCreated?: string; incidentResolved?: string }> {
     const state = this.getState(serviceId);
     const now = new Date().toISOString();

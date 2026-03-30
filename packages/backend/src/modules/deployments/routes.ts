@@ -12,12 +12,24 @@ export default async function deploymentRoutes(app: FastifyInstance) {
   app.get<{ Querystring: DeploymentQueryParams }>(
     '/deployments',
     async (request, reply) => {
-      const { serviceId, provider, status, environment, branch, since, limit, offset } =
+      const { serviceId, projectId, provider, status, environment, branch, since, limit, offset } =
         request.query;
 
       const conditions: ReturnType<typeof eq>[] = [];
 
       if (serviceId) conditions.push(eq(deploymentRecords.websiteId, serviceId));
+      if (projectId) {
+        const serviceRows = db
+          .select({ id: websites.id })
+          .from(websites)
+          .where(eq(websites.projectId, projectId))
+          .all();
+        const serviceIds = serviceRows.map((r) => r.id);
+        if (serviceIds.length === 0) {
+          return reply.send([]);
+        }
+        conditions.push(inArray(deploymentRecords.websiteId, serviceIds));
+      }
       if (provider) {
         const providers = Array.isArray(provider) ? provider : [provider];
         if (providers.length === 1) {
@@ -79,7 +91,7 @@ export default async function deploymentRoutes(app: FastifyInstance) {
       }
 
       const results = (query as any)
-        .orderBy(desc(deploymentRecords.createdAt))
+        .orderBy(desc(sql`COALESCE(${deploymentRecords.startedAt}, ${deploymentRecords.createdAt})`))
         .limit(lim)
         .offset(off)
         .all();
@@ -97,7 +109,7 @@ export default async function deploymentRoutes(app: FastifyInstance) {
         .select()
         .from(deploymentRecords)
         .where(eq(deploymentRecords.websiteId, request.params.serviceId))
-        .orderBy(desc(deploymentRecords.createdAt))
+        .orderBy(desc(sql`COALESCE(${deploymentRecords.startedAt}, ${deploymentRecords.createdAt})`))
         .limit(lim)
         .all();
       return reply.send(results);

@@ -1,5 +1,6 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import path from 'node:path';
 import { createDatabase, runMigrations, type DB } from './db/client.js';
 import { createChildLogger } from './shared/logger.js';
 import { SyncScheduler } from './modules/integrations/sync-scheduler.js';
@@ -14,6 +15,8 @@ import { DigitalOceanAdapter } from './providers/digitalocean/adapter.js';
 import { SemaphoreAdapter } from './providers/semaphore/adapter.js';
 import { LogCollector } from './modules/logs/collector.js';
 import { IncidentDetector } from './modules/incidents/service.js';
+import { LicenseManager } from './modules/license/service.js';
+import licenseRoutes from './modules/license/routes.js';
 
 // Route imports
 import inventoryRoutes from './modules/inventory/routes.js';
@@ -50,6 +53,7 @@ declare module 'fastify' {
     heartbeatMonitor?: HeartbeatMonitor;
     healthChecker?: HealthChecker;
     logCollector?: LogCollector;
+    licenseManager?: LicenseManager;
   }
 }
 
@@ -72,8 +76,25 @@ export async function buildApp(config: ServerConfig = {}): Promise<FastifyInstan
     credentials: true,
   });
 
-  // Create DB connection
-  const dbPath = config.dbPath || process.env.OPSBOARD_DB_PATH || './data.db';
+  // Create DB connection — prefer OPSBOARD_DATA_DIR (Tauri app data, survives updates)
+  const dataDir = process.env.OPSBOARD_DATA_DIR;
+  const defaultDbPath = dataDir ? path.join(dataDir, 'data.db') : './data.db';
+  const dbPath = config.dbPath || process.env.OPSBOARD_DB_PATH || defaultDbPath;
+
+  // Auto-migrate: if DB exists in old location (app bundle) but not in data dir, copy it
+  if (dataDir) {
+    const fs = await import('node:fs');
+    const oldDbPath = path.resolve('./data.db');
+    if (!fs.existsSync(dbPath) && fs.existsSync(oldDbPath) && oldDbPath !== path.resolve(dbPath)) {
+      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+      fs.copyFileSync(oldDbPath, dbPath);
+      // Also copy WAL/SHM if present
+      if (fs.existsSync(oldDbPath + '-wal')) fs.copyFileSync(oldDbPath + '-wal', dbPath + '-wal');
+      if (fs.existsSync(oldDbPath + '-shm')) fs.copyFileSync(oldDbPath + '-shm', dbPath + '-shm');
+      log.info({ from: oldDbPath, to: dbPath }, 'Migrated database from app bundle to data directory');
+    }
+  }
+
   const db = createDatabase(dbPath);
   runMigrations(db);
 
@@ -173,6 +194,7 @@ export async function buildApp(config: ServerConfig = {}): Promise<FastifyInstan
   await app.register(kubernetesRoutes, { prefix: '/api' });
   await app.register(vercelRoutes, { prefix: '/api' });
   await app.register(settingsRoutes, { prefix: '/api' });
+  await app.register(licenseRoutes, { prefix: '/api' });
   await app.register(eventStreamRoutes, { prefix: '/api' });
 
   // Register webhook receiver
@@ -204,6 +226,11 @@ export async function buildApp(config: ServerConfig = {}): Promise<FastifyInstan
       for (const key of info.keys) {
         const value = await secretStore.get(key);
         if (value) { hasSecrets = true; break; }
+      }
+      // For kubernetes: also check named kubeconfigs (kubeconfig:*)
+      if (!hasSecrets && provider === 'kubernetes') {
+        const allKeys = await secretStore.list();
+        hasSecrets = allKeys.some((k: string) => k.startsWith('kubeconfig:'));
       }
       if (!hasSecrets) continue;
 
@@ -241,6 +268,13 @@ export async function buildApp(config: ServerConfig = {}): Promise<FastifyInstan
     // Start log collector AFTER sync so infrastructure bindings with namespaces exist
     await logCollector.start();
     log.info('LogCollector started');
+
+    // Start license manager
+    const licenseDataDir = dataDir || process.env.OPSBOARD_DATA_DIR || '.';
+    const licenseManager = new LicenseManager(licenseDataDir);
+    app.decorate('licenseManager', licenseManager);
+    licenseManager.start();
+    log.info('LicenseManager started');
   });
 
   // Cleanup on close

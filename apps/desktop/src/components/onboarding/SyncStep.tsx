@@ -21,6 +21,7 @@ export default function SyncStep({ configuredProviders, onComplete }: SyncStepPr
   const [elapsed, setElapsed] = useState(0);
   const [autoAdvanced, setAutoAdvanced] = useState(false);
   const ensuredRef = useRef(false);
+  const completedProviders = useRef<Set<string>>(new Set());
 
   // If no providers configured, auto-advance immediately
   useEffect(() => {
@@ -69,12 +70,19 @@ export default function SyncStep({ configuredProviders, onComplete }: SyncStepPr
     return () => clearInterval(timer);
   }, []);
 
-  // Determine sync status per provider
+  // Determine sync status per provider — once done/error, never revert to syncing
   const providerStatuses = configuredProviders.map((providerId) => {
+    if (completedProviders.current.has(providerId)) {
+      const config = configs?.find((c) => c.provider === providerId);
+      const finalStatus = config?.lastSyncStatus === 'failed' ? 'error' as const : 'done' as const;
+      return { providerId, status: finalStatus };
+    }
     const config = configs?.find((c) => c.provider === providerId);
     if (!config) return { providerId, status: 'syncing' as const };
-    if (config.lastSyncStatus === 'success') return { providerId, status: 'done' as const };
-    if (config.lastSyncStatus === 'failed') return { providerId, status: 'error' as const };
+    if (config.lastSyncStatus === 'success' || config.lastSyncStatus === 'failed') {
+      completedProviders.current.add(providerId);
+      return { providerId, status: config.lastSyncStatus === 'failed' ? 'error' as const : 'done' as const };
+    }
     return { providerId, status: 'syncing' as const };
   });
 

@@ -6,6 +6,7 @@ import type { LogEntry, LogSource, LogLevel, Service } from '@/types';
 import { DEFAULT_COLUMNS, type LogColumn } from './ColumnSelector';
 import LogTable from './LogTable';
 import LogVolumeChart from './LogVolumeChart';
+import LogServiceSidebar from './LogServiceSidebar';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -162,37 +163,8 @@ export default function LogLiveWindow() {
               </button>
             </div>
 
-            {/* Compact filter controls for sidebar */}
+            {/* Filter controls */}
             <div className="space-y-3">
-              <div>
-                <span className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Services</span>
-                <div className="flex flex-wrap gap-1">
-                  {servicesList.map((svc: Service) => {
-                    const selected = selectedServiceIds.includes(svc.id);
-                    return (
-                      <button
-                        key={svc.id}
-                        onClick={() => {
-                          if (selected) {
-                            setSelectedServiceIds(selectedServiceIds.filter((id) => id !== svc.id));
-                          } else {
-                            setSelectedServiceIds([...selectedServiceIds, svc.id]);
-                          }
-                        }}
-                        className={clsx(
-                          'px-2 py-0.5 rounded text-[10px] font-medium transition-colors border',
-                          selected
-                            ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                            : 'bg-gray-800 text-gray-600 border-gray-700'
-                        )}
-                      >
-                        {svc.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
               <div>
                 <span className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">Sources</span>
                 <div className="flex flex-wrap gap-1">
@@ -338,6 +310,13 @@ export default function LogLiveWindow() {
           />
         </div>
       </div>
+
+      {/* Service sidebar (right) */}
+      <LogServiceSidebar
+        services={servicesList}
+        selectedIds={selectedServiceIds}
+        onChange={setSelectedServiceIds}
+      />
     </div>
   );
 }

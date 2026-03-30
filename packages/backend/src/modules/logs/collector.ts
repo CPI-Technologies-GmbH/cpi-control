@@ -93,6 +93,8 @@ export class LogCollector {
   private _buffer: RingBuffer<LogEntry>;
   private running = false;
   private kubeconfigPath: string | null = null;
+  /** Per-cluster kubeconfig temp file paths */
+  private clusterKubeconfigPaths: Map<string, string> = new Map();
   /** Maps container/deployment name → serviceId for enriching log entries. */
   private serviceIdCache: Map<string, string> = new Map();
   private cacheRefreshedAt = 0;
@@ -138,27 +140,72 @@ export class LogCollector {
       return;
     }
 
-    // Write kubeconfig to temp file
-    const kubeconfigContent = await this.secretStore.get('kubeconfig');
-    if (!kubeconfigContent) {
-      log.warn('No kubeconfig found — LogCollector will not collect Kubernetes logs');
-      return;
-    }
+    try {
+      // Collect all available kubeconfigs (plain + named)
+      const allKeys = await this.secretStore.list();
+      const namedKeys = allKeys.filter((k: string) => k.startsWith('kubeconfig:'));
+      log.info({ namedKeys: namedKeys.length }, 'Found %d named kubeconfigs', namedKeys.length);
 
-    this.kubeconfigPath = path.join(os.tmpdir(), `opsboard-collector-kubeconfig-${Date.now()}`);
-    fs.writeFileSync(this.kubeconfigPath, kubeconfigContent, { mode: 0o600 });
+      // Try plain 'kubeconfig' first
+      const plainKubeconfig = await this.secretStore.get('kubeconfig');
 
-    // Discover namespaces from infrastructure bindings
-    const namespaces = this.discoverNamespaces();
-
-    if (namespaces.length === 0) {
-      log.info('No active K8s namespaces found — starting with --all-namespaces');
-      this.spawnSternForNamespace('__all__');
-    } else {
-      log.info({ namespaces }, 'Starting stern processes for %d namespaces', namespaces.length);
-      for (const ns of namespaces) {
-        this.spawnSternForNamespace(ns);
+      if (!plainKubeconfig && namedKeys.length === 0) {
+        log.warn('No kubeconfig found — LogCollector will not collect Kubernetes logs');
+        return;
       }
+
+      // Discover which namespaces belong to which cluster
+      const clusterNamespaces = this.discoverClusterNamespaces();
+      log.info({ clusters: Array.from(clusterNamespaces.entries()).map(([k, v]) => `${k}(${v.length})`) }, 'Discovered cluster-namespace mapping');
+
+      if (plainKubeconfig) {
+        // Use plain kubeconfig as default
+        this.kubeconfigPath = path.join(os.tmpdir(), `opsboard-collector-kubeconfig-${Date.now()}`);
+        fs.writeFileSync(this.kubeconfigPath, plainKubeconfig, { mode: 0o600 });
+
+        const defaultNamespaces = clusterNamespaces.get('__default__') || [];
+        if (defaultNamespaces.length > 0) {
+          for (const ns of defaultNamespaces) {
+            this.spawnSternForNamespace(ns);
+          }
+        }
+      }
+
+      // Start stern for each named kubeconfig — use cluster:namespace as key to avoid collisions
+      for (const key of namedKeys) {
+        const clusterName = key.replace('kubeconfig:', '');
+        const content = await this.secretStore.get(key);
+        if (!content) {
+          log.warn({ clusterName }, 'Empty kubeconfig for cluster %s', clusterName);
+          continue;
+        }
+
+        const tmpPath = path.join(os.tmpdir(), `opsboard-collector-kubeconfig-${clusterName.replace(/\s+/g, '-')}-${Date.now()}`);
+        fs.writeFileSync(tmpPath, content, { mode: 0o600 });
+        this.clusterKubeconfigPaths.set(clusterName, tmpPath);
+
+        const namespaces = clusterNamespaces.get(clusterName) || [];
+        if (namespaces.length > 0) {
+          log.info({ clusterName, namespaces }, 'Starting stern for cluster %s (%d namespaces)', clusterName, namespaces.length);
+          for (const ns of namespaces) {
+            // Use unique key: "clusterName::namespace" to avoid collisions across clusters
+            this.spawnSternForNamespace(`${clusterName}::${ns}`, tmpPath);
+          }
+        } else {
+          log.info({ clusterName }, 'No specific namespaces for cluster %s — starting with --all-namespaces', clusterName);
+          this.spawnSternForNamespace(`__all__:${clusterName}`, tmpPath);
+        }
+      }
+
+      // If no processes started at all and we have a default kubeconfig, try --all-namespaces
+      if (this.namespaceProcesses.size === 0 && this.kubeconfigPath) {
+        log.info('No active K8s namespaces found — starting with --all-namespaces');
+        this.spawnSternForNamespace('__all__');
+      }
+
+      log.info({ processCount: this.namespaceProcesses.size }, 'LogCollector started %d stern processes', this.namespaceProcesses.size);
+    } catch (err: any) {
+      log.error({ error: err.message, stack: err.stack }, 'LogCollector start() failed');
     }
   }
 
@@ -176,7 +223,12 @@ export class LogCollector {
     }
     this.namespaceProcesses.clear();
 
-    // Clean up kubeconfig temp file
+    // Clean up kubeconfig temp files
+    for (const [, tmpPath] of this.clusterKubeconfigPaths) {
+      try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+    }
+    this.clusterKubeconfigPaths.clear();
+
     if (this.kubeconfigPath) {
       try {
         fs.unlinkSync(this.kubeconfigPath);
@@ -237,50 +289,67 @@ export class LogCollector {
     return undefined;
   }
 
-  private discoverNamespaces(): string[] {
+  /** Discover namespaces grouped by cluster name from infrastructure bindings. */
+  private discoverClusterNamespaces(): Map<string, string[]> {
+    const result = new Map<string, Set<string>>();
     try {
       const bindings = this.db
-        .select({ externalId: infrastructureBindings.externalId })
+        .select({
+          externalId: infrastructureBindings.externalId,
+          metadata: infrastructureBindings.metadata,
+        })
         .from(infrastructureBindings)
         .where(eq(infrastructureBindings.provider, 'kubernetes'))
         .all();
 
-      const namespaces = new Set<string>();
       for (const binding of bindings) {
-        // externalId format is "namespace/name"
         const slashIdx = binding.externalId.indexOf('/');
-        if (slashIdx > 0) {
-          namespaces.add(binding.externalId.slice(0, slashIdx));
-        }
+        if (slashIdx <= 0) continue;
+
+        const namespace = binding.externalId.slice(0, slashIdx);
+        const meta = binding.metadata as Record<string, unknown> | null;
+        const clusterName = (meta?.clusterName as string) || '__default__';
+
+        if (!result.has(clusterName)) result.set(clusterName, new Set());
+        result.get(clusterName)!.add(namespace);
       }
-      return Array.from(namespaces);
     } catch (err: any) {
       log.error({ error: err.message }, 'Failed to discover namespaces');
-      return [];
     }
+
+    // Convert Sets to arrays
+    const out = new Map<string, string[]>();
+    for (const [cluster, nsSet] of result) {
+      out.set(cluster, Array.from(nsSet));
+    }
+    return out;
   }
 
-  private spawnSternForNamespace(namespace: string): void {
-    if (!this.running || !this.kubeconfigPath) return;
+  private spawnSternForNamespace(namespaceKey: string, kubeconfigOverride?: string): void {
+    const kcPath = kubeconfigOverride || this.kubeconfigPath;
+    if (!this.running || !kcPath) return;
 
-    const isAllNamespaces = namespace === '__all__';
+    const isAllNamespaces = namespaceKey.startsWith('__all__');
+    // Extract actual namespace from key format "clusterName::namespace"
+    const actualNamespace = namespaceKey.includes('::') ? namespaceKey.split('::')[1] : namespaceKey;
+    const displayNs = isAllNamespaces ? '*' : actualNamespace;
     const args = isAllNamespaces
       ? ['--all-namespaces', '--output', 'json', '--tail', '100', '.*']
-      : ['--namespace', namespace, '--output', 'json', '--tail', '100', '.*'];
+      : ['--namespace', actualNamespace, '--output', 'json', '--tail', '100', '.*'];
 
-    log.info({ namespace: isAllNamespaces ? '*' : namespace }, 'Spawning stern process');
+    log.info({ namespace: displayNs }, 'Spawning stern process');
 
     const proc = spawn(STERN_PATH, args, {
-      env: { ...process.env, KUBECONFIG: this.kubeconfigPath! },
+      env: { ...process.env, KUBECONFIG: kcPath },
     });
 
     const state: NamespaceProcess = {
-      namespace,
+      namespace: namespaceKey,
       process: proc,
-      tmpKubeconfigPath: this.kubeconfigPath!,
+      tmpKubeconfigPath: kcPath,
     };
 
-    this.namespaceProcesses.set(namespace, state);
+    this.namespaceProcesses.set(namespaceKey, state);
 
     let lineBuffer = '';
 
@@ -304,28 +373,21 @@ export class LogCollector {
     proc.stderr.on('data', (chunk: Buffer) => {
       const msg = chunk.toString().trim();
       if (msg) {
-        log.debug({ namespace: isAllNamespaces ? '*' : namespace, stderr: msg.slice(0, 200) }, 'stern stderr');
+        log.debug({ namespace: displayNs, stderr: msg.slice(0, 200) }, 'stern stderr');
       }
     });
 
     proc.on('close', (code) => {
-      log.warn(
-        { namespace: isAllNamespaces ? '*' : namespace, code },
-        'stern process exited'
-      );
-      this.namespaceProcesses.delete(namespace);
+      log.warn({ namespace: displayNs, code }, 'stern process exited');
+      this.namespaceProcesses.delete(namespaceKey);
 
       // Auto-restart if still running
       if (this.running) {
-        log.info(
-          { namespace: isAllNamespaces ? '*' : namespace, delayMs: RESTART_DELAY_MS },
-          'Scheduling stern restart'
-        );
+        log.info({ namespace: displayNs, delayMs: RESTART_DELAY_MS }, 'Scheduling stern restart');
         const timer = setTimeout(() => {
-          this.spawnSternForNamespace(namespace);
+          this.spawnSternForNamespace(namespaceKey, kcPath);
         }, RESTART_DELAY_MS);
-        // Store timer in a temporary entry so it can be cleared on stop
-        this.namespaceProcesses.set(namespace, {
+        this.namespaceProcesses.set(namespaceKey, {
           ...state,
           process: proc,
           restartTimer: timer,
@@ -334,11 +396,14 @@ export class LogCollector {
     });
 
     proc.on('error', (err) => {
-      log.error(
-        { namespace: isAllNamespaces ? '*' : namespace, error: err.message },
-        'stern process error'
-      );
+      log.error({ namespace: displayNs, error: err.message }, 'stern process error');
     });
+  }
+
+  /** Strip ANSI escape codes from a string. */
+  private stripAnsi(str: string): string {
+    // eslint-disable-next-line no-control-regex
+    return str.replace(/\x1b\[[0-9;]*m/g, '');
   }
 
   /** Parse stern JSON output into a LogEntry. */
@@ -376,7 +441,7 @@ export class LogCollector {
       timestamp,
       source: 'kubernetes',
       level,
-      message,
+      message: this.stripAnsi(message),
       metadata: {
         pod,
         namespace: (data.namespace as string) ?? undefined,

@@ -3,15 +3,17 @@ import { useQuery } from '@tanstack/react-query';
 import { projects as projectsApi } from '@/lib/api';
 import type { Service, Project } from '@/types';
 import { statusDotColor } from '@/lib/formatters';
+import { PanelRightClose } from 'lucide-react';
 import clsx from 'clsx';
 
 interface Props {
   services: Service[];
   selectedIds: string[];
   onChange: (ids: string[]) => void;
+  onCollapse?: () => void;
 }
 
-export default function LogServiceSidebar({ services, selectedIds, onChange }: Props) {
+export default function LogServiceSidebar({ services, selectedIds, onChange, onCollapse }: Props) {
   const { data: projectsList = [] } = useQuery({
     queryKey: ['projects'],
     queryFn: projectsApi.list,
@@ -78,7 +80,14 @@ export default function LogServiceSidebar({ services, selectedIds, onChange }: P
   return (
     <div className="w-56 flex-shrink-0 card overflow-y-auto max-h-full">
       <div className="p-3 border-b border-gray-800">
-        <h3 className="text-xs text-gray-500 uppercase tracking-wide font-medium">Services</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs text-gray-500 uppercase tracking-wide font-medium">Services</h3>
+          {onCollapse && (
+            <button onClick={onCollapse} className="text-gray-500 hover:text-gray-300 transition-colors" title="Hide sidebar">
+              <PanelRightClose size={14} />
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2 mt-1.5">
           <button
             onClick={() => onChange(services.map((s) => s.id))}

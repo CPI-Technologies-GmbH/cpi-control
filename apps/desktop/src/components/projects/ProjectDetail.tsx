@@ -6,15 +6,17 @@ import { projects as api } from '@/lib/api';
 import ProjectForm from './ProjectForm';
 import ProjectDashboard from './ProjectDashboard';
 import ProjectServiceManager from './ProjectServiceManager';
-import { ArrowLeft, Edit2, Trash2, Mail, Phone, FileText, LayoutDashboard, Server } from 'lucide-react';
+import ProjectDeployments from './ProjectDeployments';
+import { ArrowLeft, Edit2, Trash2, Mail, Phone, FileText, LayoutDashboard, Server, Rocket } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
 import type { Project } from '@/types';
 
-type Tab = 'dashboard' | 'services';
+type Tab = 'dashboard' | 'services' | 'deployments';
 
 const tabs: Array<{ key: Tab; label: string; icon: React.ReactNode }> = [
   { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={14} /> },
   { key: 'services', label: 'Services', icon: <Server size={14} /> },
+  { key: 'deployments', label: 'Deployments', icon: <Rocket size={14} /> },
 ];
 
 export default function ProjectDetail() {
@@ -187,6 +189,7 @@ export default function ProjectDetail() {
       {/* Tab content */}
       {activeTab === 'dashboard' && <ProjectDashboard projectId={project.id} />}
       {activeTab === 'services' && <ProjectServiceManager project={project} />}
+      {activeTab === 'deployments' && <ProjectDeployments projectId={project.id} />}
     </div>
   );
 }

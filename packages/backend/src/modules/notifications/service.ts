@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { DB } from '../../db/client.js';
-import { notificationRules } from '../../db/schema.js';
+import { notificationRules, websites } from '../../db/schema.js';
 import { createChildLogger } from '../../shared/logger.js';
 
 const log = createChildLogger('notifications');
@@ -155,6 +155,29 @@ export class NotificationService {
         }
       }
 
+      // Check if service is muted or archived
+      if (details.serviceId) {
+        const svcRows = this.db
+          .select({ archived: websites.archived, mutedUntil: websites.mutedUntil })
+          .from(websites)
+          .where(eq(websites.id, details.serviceId as string))
+          .all();
+        if (svcRows.length > 0) {
+          const svc = svcRows[0];
+          if (svc.archived) {
+            skipped++;
+            continue;
+          }
+          if (svc.mutedUntil) {
+            if (svc.mutedUntil === 'forever' || new Date(svc.mutedUntil).getTime() > Date.now()) {
+              log.debug({ serviceId: details.serviceId, mutedUntil: svc.mutedUntil }, 'Notification skipped — service muted');
+              skipped++;
+              continue;
+            }
+          }
+        }
+      }
+
       // Check service filter
       if (rule.websiteFilter && details.serviceId) {
         const filter = rule.websiteFilter as string[];
@@ -227,14 +250,41 @@ export class NotificationService {
     }
   }
 
+  /** Check if a service is muted or archived. Returns true if notifications should be suppressed. */
+  private isServiceSuppressed(serviceId: string): boolean {
+    const rows = this.db
+      .select({ archived: websites.archived, mutedUntil: websites.mutedUntil })
+      .from(websites)
+      .where(eq(websites.id, serviceId))
+      .all();
+    if (rows.length === 0) return false;
+    const svc = rows[0];
+    if (svc.archived) return true;
+    if (svc.mutedUntil) {
+      if (svc.mutedUntil === 'forever' || new Date(svc.mutedUntil).getTime() > Date.now()) return true;
+    }
+    return false;
+  }
+
   private async flushBatch(): Promise<void> {
     this.batchTimer = null;
     const events = this.pendingEvents.splice(0);
     if (events.length === 0) return;
 
+    // Filter out muted/archived services BEFORE grouping
+    const filteredEvents = events.filter((ev) => {
+      const serviceId = ev.details.serviceId as string | undefined;
+      if (serviceId && this.isServiceSuppressed(serviceId)) {
+        log.debug({ serviceId, eventType: ev.eventType }, 'Suppressed batched notification for muted/archived service');
+        return false;
+      }
+      return true;
+    });
+    if (filteredEvents.length === 0) return;
+
     // Group by eventType
     const groups = new Map<string, PendingEvent[]>();
-    for (const ev of events) {
+    for (const ev of filteredEvents) {
       const group = groups.get(ev.eventType) || [];
       group.push(ev);
       groups.set(ev.eventType, group);

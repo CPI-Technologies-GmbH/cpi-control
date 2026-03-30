@@ -175,10 +175,11 @@ export default function LogTable({
 
           {/* Rows */}
           <div className="divide-y divide-gray-800/50">
-            {entries.map((entry) => (
+            {entries.map((entry, idx) => (
               <LogRow
                 key={entry.id}
                 entry={entry}
+                previousEntry={idx > 0 ? entries[idx - 1] : undefined}
                 expanded={expandedEntry === entry.id}
                 onToggle={() =>
                   setExpandedEntry((prev) => (prev === entry.id ? null : entry.id))
@@ -210,6 +211,7 @@ export default function LogTable({
 
 function LogRow({
   entry,
+  previousEntry,
   expanded,
   onToggle,
   visibleColumns,
@@ -217,6 +219,7 @@ function LogRow({
   serviceNameMap,
 }: {
   entry: LogEntry;
+  previousEntry?: LogEntry;
   expanded: boolean;
   onToggle: () => void;
   visibleColumns: LogColumn[];
@@ -232,6 +235,13 @@ function LogRow({
   const serviceColor = serviceId
     ? getServiceColor(serviceId, allServiceIds)
     : null;
+
+  // Dedup: hide repeated tags when consecutive entries have same service + source + level
+  const prevServiceId = (previousEntry?.metadata?.serviceId as string) || '';
+  const isSameGroup = previousEntry
+    && prevServiceId === serviceId
+    && previousEntry.source === entry.source
+    && previousEntry.level === entry.level;
 
   return (
     <div
@@ -257,41 +267,53 @@ function LogRow({
 
         {/* Service */}
         {visibleColumns.includes('service') && (
-          <span
-            className={clsx(
-              'flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium w-[100px] truncate text-center',
-              serviceColor
-                ? `${serviceColor.bg} ${serviceColor.text}`
-                : 'bg-gray-700/40 text-gray-500'
-            )}
-            title={serviceName}
-          >
-            {serviceName || '-'}
-          </span>
+          isSameGroup ? (
+            <span className="flex-shrink-0 w-[100px]" />
+          ) : (
+            <span
+              className={clsx(
+                'flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium w-[100px] truncate text-center',
+                serviceColor
+                  ? `${serviceColor.bg} ${serviceColor.text}`
+                  : 'bg-gray-700/40 text-gray-500'
+              )}
+              title={serviceName}
+            >
+              {serviceName || '-'}
+            </span>
+          )
         )}
 
         {/* Source badge */}
         {visibleColumns.includes('source') && (
-          <span
-            className={clsx(
-              'flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium w-[72px] text-center',
-              SOURCE_COLORS[entry.source]
-            )}
-          >
-            {entry.source}
-          </span>
+          isSameGroup ? (
+            <span className="flex-shrink-0 w-[72px]" />
+          ) : (
+            <span
+              className={clsx(
+                'flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium w-[72px] text-center',
+                SOURCE_COLORS[entry.source]
+              )}
+            >
+              {entry.source}
+            </span>
+          )
         )}
 
         {/* Level badge */}
         {visibleColumns.includes('level') && (
-          <span
-            className={clsx(
-              'flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium w-[40px] text-center uppercase',
-              LEVEL_BADGE_COLORS[entry.level]
-            )}
-          >
-            {entry.level}
-          </span>
+          isSameGroup ? (
+            <span className="flex-shrink-0 w-[40px]" />
+          ) : (
+            <span
+              className={clsx(
+                'flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium w-[40px] text-center uppercase',
+                LEVEL_BADGE_COLORS[entry.level]
+              )}
+            >
+              {entry.level}
+            </span>
+          )
         )}
 
         {/* Namespace */}

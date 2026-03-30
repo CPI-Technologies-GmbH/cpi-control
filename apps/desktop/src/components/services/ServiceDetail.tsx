@@ -57,6 +57,10 @@ import {
   XCircle,
   MemoryStick,
   Image,
+  Archive,
+  BellOff,
+  Bell,
+  Terminal,
 } from 'lucide-react';
 import { ProviderIcon } from '@/components/icons/ProviderIcons';
 import clsx from 'clsx';
@@ -64,7 +68,7 @@ import type { Environment, HostingType, ServiceType, IntegrationConfig, VercelPr
 
 const environmentOptions: Environment[] = ['production', 'staging', 'development'];
 const hostingTypeOptions: HostingType[] = [
-  'vercel', 'kubernetes', 'digitalocean', 'ovh', 'github', 'aws', 'docker', 'other',
+  'vercel', 'kubernetes', 'digitalocean', 'aws', 'gcloud', 'azure', 'ovh', 'github', 'docker', 'other',
 ];
 const typeOptions: { value: ServiceType; label: string }[] = [
   { value: 'website', label: 'Public' },
@@ -77,6 +81,8 @@ export default function ServiceDetail() {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [isEditing, setIsEditing] = useState(false);
+  const [showMuteMenu, setShowMuteMenu] = useState(false);
+  const [showTerminalModal, setShowTerminalModal] = useState(false);
   const { data: service, isLoading, error } = useService(id);
   const { data: deployments } = useDeploymentsByService(id);
   const { data: incidents } = useIncidents(id ? { serviceId: id } : undefined);
@@ -143,24 +149,16 @@ export default function ServiceDetail() {
     }
     return service?.name;
   })();
+  // Extract cluster name from binding metadata to target the correct kubeconfig
+  const k8sClusterName = (k8sBinding?.metadata as Record<string, unknown> | null)?.clusterName as string | undefined
+    || (service?.metadata as Record<string, unknown> | null)?.clusterName as string | undefined;
 
   // K8s data hooks
-  const { data: k8sDeployments } = useK8sDeployments(
-    service?.hostingType === 'kubernetes' ? k8sIntegrationId : undefined,
-    k8sNamespace
-  );
-  const { data: k8sPods } = useK8sPods(
-    service?.hostingType === 'kubernetes' ? k8sIntegrationId : undefined,
-    k8sNamespace
-  );
-  const { data: k8sMetrics } = useK8sPodMetrics(
-    service?.hostingType === 'kubernetes' ? k8sIntegrationId : undefined,
-    k8sNamespace
-  );
-  const { data: k8sEvents } = useK8sEvents(
-    service?.hostingType === 'kubernetes' ? k8sIntegrationId : undefined,
-    k8sNamespace
-  );
+  const k8sEnabled = service?.hostingType === 'kubernetes' ? k8sIntegrationId : undefined;
+  const { data: k8sDeployments } = useK8sDeployments(k8sEnabled, k8sNamespace, k8sClusterName);
+  const { data: k8sPods } = useK8sPods(k8sEnabled, k8sNamespace, k8sClusterName);
+  const { data: k8sMetrics } = useK8sPodMetrics(k8sEnabled, k8sNamespace, k8sClusterName);
+  const { data: k8sEvents } = useK8sEvents(k8sEnabled, k8sNamespace, undefined, k8sClusterName);
   const restartDeployment = useRestartDeployment();
   const [restartConfirm, setRestartConfirm] = useState(false);
 
@@ -410,13 +408,100 @@ export default function ServiceDetail() {
         </div>
         <div className="flex items-center gap-4 text-sm">
           {!isEditing && (
-            <button
-              onClick={openEditForm}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
-            >
-              <Pencil size={14} />
-              Edit
-            </button>
+            <>
+              <button
+                onClick={openEditForm}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
+              >
+                <Pencil size={14} />
+                Edit
+              </button>
+
+              {/* Mute button */}
+              <div className="relative">
+                {service.mutedUntil && (service.mutedUntil === 'forever' || new Date(service.mutedUntil) > new Date()) ? (
+                  <button
+                    onClick={() => updateService.mutate({ id: service.id, data: { mutedUntil: null } })}
+                    disabled={updateService.isPending}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                  >
+                    <Bell size={14} />
+                    Unmute
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowMuteMenu(!showMuteMenu)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
+                  >
+                    <BellOff size={14} />
+                    Mute
+                  </button>
+                )}
+                {showMuteMenu && (
+                  <div className="absolute top-full mt-1 right-0 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 py-1 min-w-[120px]">
+                    {[
+                      { label: '1 Stunde', hours: 1 },
+                      { label: '12 Stunden', hours: 12 },
+                      { label: '1 Tag', hours: 24 },
+                      { label: '7 Tage', hours: 24 * 7 },
+                      { label: 'Permanent', hours: -1 },
+                    ].map((opt) => (
+                      <button
+                        key={opt.hours}
+                        onClick={() => {
+                          const mutedUntil = opt.hours === -1
+                            ? 'forever'
+                            : new Date(Date.now() + opt.hours * 60 * 60 * 1000).toISOString();
+                          setShowMuteMenu(false);
+                          updateService.mutate({ id: service.id, data: { mutedUntil } });
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Archive button */}
+              {!service.archived ? (
+                <button
+                  onClick={() => {
+                    updateService.mutate(
+                      { id: service.id, data: { archived: true } },
+                      { onSuccess: () => window.history.back() }
+                    );
+                  }}
+                  disabled={updateService.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700 disabled:opacity-50"
+                >
+                  <Archive size={14} />
+                  Archive
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    updateService.mutate({ id: service.id, data: { archived: false } });
+                  }}
+                  disabled={updateService.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20 transition-colors disabled:opacity-50"
+                >
+                  <Archive size={14} />
+                  Unarchive
+                </button>
+              )}
+              {/* Open Terminal (K8s only) */}
+              {service.hostingType === 'kubernetes' && k8sNamespace && (
+                <button
+                  onClick={() => setShowTerminalModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
+                >
+                  <Terminal size={14} />
+                  Terminal
+                </button>
+              )}
+            </>
           )}
           {isWebsite && (
             <>
@@ -708,6 +793,12 @@ export default function ServiceDetail() {
                   <p className="text-gray-600">No URL</p>
                 )}
               </div>
+              {(service.metadata as any)?.clusterName && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Cluster</p>
+                  <p className="text-gray-200 font-medium">{(service.metadata as any).clusterName}</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1019,6 +1110,7 @@ export default function ServiceDetail() {
                                   integrationId: k8sIntegrationId,
                                   namespace: k8sNamespace || 'default',
                                   name: matchingDep.name,
+                                  clusterName: k8sClusterName,
                                 });
                                 setRestartConfirm(false);
                               }}
@@ -1683,6 +1775,60 @@ export default function ServiceDetail() {
       {activeTab === 'logs' && (
         <div className="h-[calc(100vh-16rem)]">
           <LogViewer initialServiceId={service.id} />
+        </div>
+      )}
+
+      {/* Terminal Pod Selection Modal */}
+      {showTerminalModal && k8sNamespace && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowTerminalModal(false)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-100 mb-4 flex items-center gap-2">
+              <Terminal size={18} />
+              Open Terminal
+            </h3>
+            <p className="text-sm text-gray-400 mb-3">Select a pod to connect to:</p>
+            {k8sPods && k8sPods.length > 0 ? (
+              <div className="space-y-1 max-h-64 overflow-y-auto">
+                {k8sPods
+                  .filter((p) => p.name.includes(k8sDeploymentName || ''))
+                  .map((pod) => (
+                    <button
+                      key={pod.name}
+                      onClick={async () => {
+                        setShowTerminalModal(false);
+                        const cmd = `kubectl exec -it ${pod.name} -n ${k8sNamespace} -- /bin/sh`;
+                        try {
+                          // Try opening macOS Terminal via osascript
+                          const { invoke } = await import('@tauri-apps/api/core');
+                          await invoke('open_terminal', { command: cmd });
+                        } catch {
+                          // Fallback: copy command to clipboard
+                          await navigator.clipboard.writeText(cmd);
+                          alert('Befehl in die Zwischenablage kopiert. Öffne ein Terminal und füge ihn ein.');
+                        }
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-200 hover:bg-gray-800 transition-colors flex items-center justify-between"
+                    >
+                      <span className="font-mono text-xs truncate">{pod.name}</span>
+                      <span className={clsx(
+                        'text-[10px] px-1.5 py-0.5 rounded',
+                        pod.ready ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                      )}>
+                        {pod.status}
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No pods found for this deployment</p>
+            )}
+            <button
+              onClick={() => setShowTerminalModal(false)}
+              className="mt-4 w-full btn-secondary text-sm"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
     </div>

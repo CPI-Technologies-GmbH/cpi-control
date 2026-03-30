@@ -27,9 +27,10 @@ import type {
   LogViewConfig,
   LogViewConfigData,
   AppSettings,
+  LicenseInfo,
 } from '@/types';
 
-const BASE_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) || 'http://localhost:19876';
+const BASE_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) || 'http://127.0.0.1:19876';
 
 // ─── Fetch Helpers ─────────────────────────────────────────────────────────
 
@@ -410,24 +411,24 @@ export const cronjobs = {
 //         GET /kubernetes/pods, GET /kubernetes/deployments
 
 export const kubernetes = {
-  namespaces: (integrationId: string) =>
-    request<K8sNamespace[]>(`/api/kubernetes/namespaces${buildQuery({ integrationId })}`),
-  cronJobs: (integrationId: string, namespace?: string) =>
-    request<K8sCronJobEntry[]>(`/api/kubernetes/cronjobs${buildQuery({ integrationId, namespace })}`),
-  cluster: (integrationId: string) =>
-    request<K8sClusterInfo>(`/api/kubernetes/cluster${buildQuery({ integrationId })}`),
-  restartDeployment: (integrationId: string, namespace: string, name: string) =>
-    request<{ success: boolean; message: string }>(`/api/kubernetes/deployments/${namespace}/${name}/restart${buildQuery({ integrationId })}`, {
+  namespaces: (integrationId: string, clusterName?: string) =>
+    request<K8sNamespace[]>(`/api/kubernetes/namespaces${buildQuery({ integrationId, clusterName })}`),
+  cronJobs: (integrationId: string, namespace?: string, clusterName?: string) =>
+    request<K8sCronJobEntry[]>(`/api/kubernetes/cronjobs${buildQuery({ integrationId, namespace, clusterName })}`),
+  cluster: (integrationId: string, clusterName?: string) =>
+    request<K8sClusterInfo>(`/api/kubernetes/cluster${buildQuery({ integrationId, clusterName })}`),
+  restartDeployment: (integrationId: string, namespace: string, name: string, clusterName?: string) =>
+    request<{ success: boolean; message: string }>(`/api/kubernetes/deployments/${namespace}/${name}/restart${buildQuery({ integrationId, clusterName })}`, {
       method: 'POST',
     }),
-  pods: (integrationId: string, namespace?: string) =>
-    request<K8sPod[]>(`/api/kubernetes/pods${buildQuery({ integrationId, namespace })}`),
-  deployments: (integrationId: string, namespace?: string) =>
-    request<K8sDeploymentEntry[]>(`/api/kubernetes/deployments${buildQuery({ integrationId, namespace })}`),
-  metrics: (integrationId: string, namespace?: string) =>
-    request<K8sMetricsResponse>(`/api/kubernetes/metrics${buildQuery({ integrationId, namespace })}`),
-  events: (integrationId: string, namespace?: string, name?: string) =>
-    request<K8sEvent[]>(`/api/kubernetes/events${buildQuery({ integrationId, namespace, name })}`),
+  pods: (integrationId: string, namespace?: string, clusterName?: string) =>
+    request<K8sPod[]>(`/api/kubernetes/pods${buildQuery({ integrationId, namespace, clusterName })}`),
+  deployments: (integrationId: string, namespace?: string, clusterName?: string) =>
+    request<K8sDeploymentEntry[]>(`/api/kubernetes/deployments${buildQuery({ integrationId, namespace, clusterName })}`),
+  metrics: (integrationId: string, namespace?: string, clusterName?: string) =>
+    request<K8sMetricsResponse>(`/api/kubernetes/metrics${buildQuery({ integrationId, namespace, clusterName })}`),
+  events: (integrationId: string, namespace?: string, name?: string, clusterName?: string) =>
+    request<K8sEvent[]>(`/api/kubernetes/events${buildQuery({ integrationId, namespace, name, clusterName })}`),
 };
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -443,6 +444,40 @@ export const settings = {
       '/api/settings/reset',
       { method: 'POST' }
     ),
+};
+
+// ─── Updates ────────────────────────────────────────────────────────────────
+// Backend: settingsRoutes registered with prefix '/api'
+// Routes: GET /updates/app, GET /updates/agent
+
+export interface UpdateInfo {
+  currentVersion?: string;
+  latestTag: string;
+  latestName: string;
+  body: string;
+  publishedAt: string;
+  draft: boolean;
+  prerelease: boolean;
+  assets: Array<{ name: string; size: number; url: string }>;
+}
+
+export const updates = {
+  checkApp: () => request<UpdateInfo>('/api/updates/app'),
+  checkAgent: () => request<UpdateInfo>('/api/updates/agent'),
+};
+
+// ─── License ──────────────────────────────────────────────────────────────
+// Backend: licenseRoutes registered with prefix '/api'
+// Routes: GET /license, POST /license/activate, POST /license/deactivate, POST /license/validate
+
+export const license = {
+  get: () => request<LicenseInfo>('/api/license'),
+  activate: (data: { licenseKey: string; machineId: string }) =>
+    request<LicenseInfo>('/api/license/activate', { method: 'POST', body: JSON.stringify(data) }),
+  deactivate: () =>
+    request<{ success: boolean }>('/api/license/deactivate', { method: 'POST' }),
+  validate: () =>
+    request<LicenseInfo>('/api/license/validate', { method: 'POST' }),
 };
 
 // ─── Vercel ─────────────────────────────────────────────────────────────────

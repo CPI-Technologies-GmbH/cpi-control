@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   AreaChart,
@@ -24,9 +25,14 @@ interface Props {
 }
 
 export default function ProjectStatusTimeline({ projectId }: Props) {
-  const since = subDays(new Date(), 7).toISOString();
+  // Stabilize the since value — round to hour so queryKey stays stable across renders
+  const since = useMemo(() => {
+    const d = subDays(new Date(), 7);
+    d.setMinutes(0, 0, 0);
+    return d.toISOString();
+  }, []);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['project-status-timeline', projectId, since],
     queryFn: async (): Promise<StatusBucket[]> => {
       const sp = new URLSearchParams({ since, bucketMinutes: '60' });
@@ -38,16 +44,17 @@ export default function ProjectStatusTimeline({ projectId }: Props) {
     },
     enabled: !!projectId,
     refetchInterval: 60_000,
+    placeholderData: (prev) => prev,
   });
 
   if (isLoading) {
     return <div className="skeleton w-full h-40 rounded-lg" />;
   }
 
-  if (!data || data.length === 0) {
+  if (error || !data || data.length === 0) {
     return (
-      <div className="p-6 text-center text-sm text-gray-500 bg-gray-800/30 rounded-lg">
-        No status data available yet
+      <div className="card p-6 text-center text-sm text-gray-500">
+        {error ? 'Failed to load timeline data' : 'No status data available yet — health checks will populate this chart over time'}
       </div>
     );
   }
@@ -61,7 +68,7 @@ export default function ProjectStatusTimeline({ projectId }: Props) {
           <XAxis
             dataKey="time"
             tickFormatter={(iso: string) => {
-              try { return format(parseISO(iso), 'MMM d'); } catch { return ''; }
+              try { return format(parseISO(iso), 'MMM d HH:mm'); } catch { return ''; }
             }}
             tick={{ fill: '#6b7280', fontSize: 11 }}
             axisLine={{ stroke: '#374151' }}

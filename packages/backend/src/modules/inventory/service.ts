@@ -45,6 +45,7 @@ export async function createProject(db: DB, body: CreateProjectBody) {
       id,
       name: body.name,
       slug: body.slug,
+      icon: body.icon || null,
       contactEmail: body.contactEmail || null,
       contactPhone: body.contactPhone || null,
       notes: body.notes || null,
@@ -65,6 +66,7 @@ export async function updateProject(db: DB, id: string, body: UpdateProjectBody)
     .set({
       ...(body.name !== undefined && { name: body.name }),
       ...(body.slug !== undefined && { slug: body.slug }),
+      ...(body.icon !== undefined && { icon: body.icon }),
       ...(body.contactEmail !== undefined && { contactEmail: body.contactEmail }),
       ...(body.contactPhone !== undefined && { contactPhone: body.contactPhone }),
       ...(body.notes !== undefined && { notes: body.notes }),
@@ -215,17 +217,67 @@ export async function listServices(db: DB, params: ServiceQueryParams) {
       sql`(${websites.name} LIKE ${'%' + params.search + '%'} OR ${websites.url} LIKE ${'%' + params.search + '%'})`
     );
   }
+  // Exclude archived by default
+  if (params.includeArchived !== 'true') {
+    conditions.push(sql`(${websites.archived} = 0 OR ${websites.archived} IS NULL)`);
+  }
 
   const limit = params.limit ? parseInt(params.limit, 10) : 100;
   const offset = params.offset ? parseInt(params.offset, 10) : 0;
 
-  let query = db.select().from(websites);
+  let query = db
+    .select({
+      id: websites.id,
+      projectId: websites.projectId,
+      name: websites.name,
+      type: websites.type,
+      url: websites.url,
+      environment: websites.environment,
+      hostingType: websites.hostingType,
+      status: websites.status,
+      healthCheckUrl: websites.healthCheckUrl,
+      expectedStatusCode: websites.expectedStatusCode,
+      checkIntervalSeconds: websites.checkIntervalSeconds,
+      tags: websites.tags,
+      metadata: websites.metadata,
+      archived: websites.archived,
+      mutedUntil: websites.mutedUntil,
+      createdAt: websites.createdAt,
+      updatedAt: websites.updatedAt,
+      projectName: projects.name,
+    })
+    .from(websites)
+    .leftJoin(projects, eq(websites.projectId, projects.id));
 
   if (conditions.length > 0) {
     query = query.where(and(...conditions)) as any;
   }
 
   let results = (query as any).limit(limit).offset(offset).all();
+
+  // Enrich with latest health check data
+  const serviceIds = results.map((r: any) => r.id);
+  if (serviceIds.length > 0) {
+    const latestChecks = db
+      .select({
+        websiteId: healthCheckResults.websiteId,
+        checkedAt: sql<string>`MAX(${healthCheckResults.checkedAt})`,
+        responseTimeMs: healthCheckResults.responseTimeMs,
+      })
+      .from(healthCheckResults)
+      .where(inArray(healthCheckResults.websiteId, serviceIds))
+      .groupBy(healthCheckResults.websiteId)
+      .all();
+    const checkMap = new Map(latestChecks.map((c) => [c.websiteId, c]));
+    results = results.map((s: any) => {
+      const check = checkMap.get(s.id);
+      return {
+        ...s,
+        lastCheckedAt: check?.checkedAt || null,
+        lastResponseTimeMs: check?.responseTimeMs || null,
+      };
+    });
+  }
 
   // Filter by hasOpenIncident if requested
   if (params.hasOpenIncident !== undefined) {
@@ -307,6 +359,8 @@ export async function updateService(db: DB, id: string, body: UpdateServiceBody)
       ...(body.tags !== undefined && { tags: body.tags }),
       ...(body.metadata !== undefined && { metadata: body.metadata }),
       ...(body.projectId !== undefined && { projectId: body.projectId }),
+      ...(body.archived !== undefined && { archived: body.archived }),
+      ...(body.mutedUntil !== undefined && { mutedUntil: body.mutedUntil }),
       updatedAt: now,
     })
     .where(eq(websites.id, id))
@@ -334,6 +388,8 @@ export async function batchUpdateServices(db: DB, body: BatchUpdateServicesBody)
   if (updates.environment !== undefined) setFields.environment = updates.environment;
   if (updates.type !== undefined) setFields.type = updates.type;
   if (updates.hostingType !== undefined) setFields.hostingType = updates.hostingType;
+  if (updates.archived !== undefined) setFields.archived = updates.archived;
+  if (updates.mutedUntil !== undefined) setFields.mutedUntil = updates.mutedUntil;
 
   db.update(websites)
     .set(setFields as any)

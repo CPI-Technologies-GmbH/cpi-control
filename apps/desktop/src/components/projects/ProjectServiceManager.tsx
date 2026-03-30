@@ -139,16 +139,42 @@ export default function ProjectServiceManager({ project }: { project: Project })
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-        <input
-          type="text"
-          placeholder="Search services..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="input pl-10 w-full"
-        />
+      {/* Search + Select All */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <input
+            type="text"
+            placeholder="Search services..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input pl-10 w-full"
+          />
+        </div>
+        <button
+          onClick={() => {
+            const next = new Map(assignments);
+            for (const svc of filteredServices) {
+              next.set(svc.id, true);
+            }
+            setAssignments(next);
+          }}
+          className="btn-ghost text-xs whitespace-nowrap"
+        >
+          Select All
+        </button>
+        <button
+          onClick={() => {
+            const next = new Map(assignments);
+            for (const svc of filteredServices) {
+              next.set(svc.id, false);
+            }
+            setAssignments(next);
+          }}
+          className="btn-ghost text-xs whitespace-nowrap"
+        >
+          Deselect All
+        </button>
       </div>
 
       {/* Service table */}

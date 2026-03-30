@@ -8,7 +8,7 @@ import {
 
 const BASE_URL =
   (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) ||
-  'http://localhost:19876';
+  'http://127.0.0.1:19876';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

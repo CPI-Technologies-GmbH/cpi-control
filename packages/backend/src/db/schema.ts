@@ -5,6 +5,7 @@ export const projects = sqliteTable('customers', {
   id: text('id').primaryKey(), // ULID
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
+  icon: text('icon'), // emoji or short text icon
   contactEmail: text('contact_email'),
   contactPhone: text('contact_phone'),
   notes: text('notes'),
@@ -29,6 +30,8 @@ export const websites = sqliteTable('websites', {
   checkIntervalSeconds: integer('check_interval_seconds').default(60),
   tags: text('tags', { mode: 'json' }).$type<string[]>(),
   metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>(),
+  archived: integer('archived', { mode: 'boolean' }).default(false),
+  mutedUntil: text('muted_until'), // ISO timestamp, 'forever', or null (not muted)
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
