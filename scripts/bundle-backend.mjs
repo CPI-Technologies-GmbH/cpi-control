@@ -105,7 +105,17 @@ for (const nodeFile of findNodeFiles(join(OUTPUT, 'node_modules'))) {
   console.log(`  → ${name}`);
 }
 
-// 6. Create package.json
+// 6. Bundle Node.js runtime
+console.log('→ Bundling Node.js runtime...');
+const NODE_VERSION = process.version; // Use the same Node that built the native modules
+const nodeBinSrc = process.execPath;
+const nodeBinDest = join(OUTPUT, 'node');
+cpSync(nodeBinSrc, nodeBinDest);
+// Make executable
+execSync(`chmod +x "${nodeBinDest}"`);
+console.log(`  → Bundled Node.js ${NODE_VERSION} from ${nodeBinSrc}`);
+
+// 7. Create package.json
 writeFileSync(
   join(OUTPUT, 'package.json'),
   JSON.stringify({

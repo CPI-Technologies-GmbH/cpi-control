@@ -310,7 +310,10 @@ fn spawn_log_reader(state: SharedBackendState) {
 }
 
 fn find_node() -> Option<PathBuf> {
-    // Common Node.js locations
+    // The bundled Node binary is not yet available here (we don't have resource_dir).
+    // This function is only used as a fallback. The main setup code checks for
+    // the bundled node first (see run() below).
+
     let candidates = if cfg!(target_os = "windows") {
         vec![
             "node.exe".to_string(),
@@ -318,11 +321,9 @@ fn find_node() -> Option<PathBuf> {
         ]
     } else {
         let mut paths = vec![
-            "node".to_string(),
             "/usr/local/bin/node".to_string(),
             "/opt/homebrew/bin/node".to_string(),
         ];
-        // Add nvm-managed Node.js paths
         if let Ok(home) = std::env::var("HOME") {
             let nvm_dir = PathBuf::from(&home).join(".nvm/versions/node");
             if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
@@ -330,7 +331,6 @@ fn find_node() -> Option<PathBuf> {
                     .filter_map(|e| e.ok())
                     .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
                     .collect();
-                // Sort descending to prefer latest version
                 versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
                 for v in versions {
                     paths.push(v.path().join("bin/node").to_string_lossy().to_string());
@@ -340,20 +340,6 @@ fn find_node() -> Option<PathBuf> {
         paths
     };
 
-    // Try PATH first via `which`
-    if let Ok(output) = Command::new(if cfg!(target_os = "windows") { "where" } else { "which" })
-        .arg("node")
-        .output()
-    {
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() {
-                return Some(PathBuf::from(path.lines().next().unwrap_or(&path)));
-            }
-        }
-    }
-
-    // Fallback to known locations
     for candidate in candidates {
         let p = PathBuf::from(&candidate);
         if p.exists() {
@@ -384,7 +370,15 @@ pub fn run() {
                 .expect("Failed to get app data dir");
             std::fs::create_dir_all(&app_data_dir).ok();
 
-            let node_path = find_node().unwrap_or_default();
+            // Prefer bundled Node.js (guaranteed to match native module version)
+            let bundled_node = resource_dir.join("backend").join("node");
+            let node_path = if bundled_node.exists() {
+                println!("Using bundled Node.js: {:?}", bundled_node);
+                bundled_node
+            } else {
+                println!("Bundled Node.js not found, falling back to system Node");
+                find_node().unwrap_or_default()
+            };
 
             if !backend_entry.exists() {
                 eprintln!(

@@ -263,8 +263,13 @@ export class SyncScheduler {
 
   /** Process a sync result: auto-discover services, persist deployments, update statuses */
   private processResult(result: SyncResult, integrationId: string, provider: string): void {
-    if (result.data?.deployments?.length || result.data?.k8sServices?.length) {
-      this.autoDiscoverServices(result.data.deployments || [], provider, result);
+    const hasDeployments = result.data?.deployments?.length || 0;
+    const hasK8s = result.data?.k8sServices?.length || 0;
+    const hasVercel = result.data?.vercelProjects?.length || 0;
+    log.info({ provider, hasDeployments, hasK8s, hasVercel }, 'processResult called');
+
+    if (hasDeployments || hasK8s || hasVercel) {
+      this.autoDiscoverServices(result.data!.deployments || [], provider, result);
 
       const persisted = this.persistDeployments(result);
       log.info(
@@ -753,15 +758,10 @@ export class SyncScheduler {
           continue;
         }
 
-        // For GitHub: skip repos where we can't determine a hosting target and workflows
-        // are CI-only (no deployment). These are monorepos, CI pipelines, or tools — not deployable services.
+        // For GitHub: skip repos that have NO workflow runs at all (forks, archived repos, etc.)
+        // But still create services for repos with any CI/CD activity — even if we can't determine hosting type.
         if ((provider === 'github' || provider === 'github_actions') && hostingType === 'other') {
-          const allWfLower = proj.workflowNames.map(w => w.toLowerCase()).join(' ');
-          const hasDeployWorkflow = allWfLower.includes('deploy') || allWfLower.includes('release')
-            || allWfLower.includes('publish') || allWfLower.includes('push')
-            || allWfLower.includes('migrate');
-          if (!hasDeployWorkflow) {
-            log.debug({ repo: proj.repoFullName, workflows: proj.workflowNames }, 'Skipping GitHub repo — CI-only workflows, no deploy target');
+          if (proj.workflowNames.length === 0 && proj.urls.length === 0) {
             continue;
           }
         }
@@ -785,7 +785,6 @@ export class SyncScheduler {
               )
               .all();
             if (repoBindingCount.length > 1) {
-              log.debug({ repo: proj.repoFullName, bindingCount: repoBindingCount.length }, 'Skipping monorepo — multiple services already bound to this repo');
               continue;
             }
           }
@@ -835,11 +834,9 @@ export class SyncScheduler {
                     createdAt: now,
                     updatedAt: now,
                   }).run();
-                  log.info({ repoName: proj.name, targetService: variant.name }, 'Attached repo binding to existing K8s service variant');
                 }
               }
             }
-            // Skip creating a standalone service for this repo
             continue;
           }
         }
@@ -856,9 +853,12 @@ export class SyncScheduler {
           hostingType,
           status: 'unknown',
           metadata: proj.metadata,
+          archived: false,
+          mutedUntil: null,
           createdAt: now,
           updatedAt: now,
         }).run();
+        log.info({ serviceId, name: proj.name, provider }, 'Created service');
 
         // Create infrastructure binding for K8s/Vercel
         if (provider === 'kubernetes' || provider === 'vercel') {
@@ -906,7 +906,7 @@ export class SyncScheduler {
         created++;
         log.info({ serviceId, name: proj.name, type: serviceType, hostingType, provider, hasIngress: proj.hasIngress }, 'Auto-discovered service from sync');
       } catch (err: any) {
-        log.warn({ projectKey, error: err.message }, 'Failed to auto-create service');
+        log.error({ projectKey, error: err.message, stack: err.stack?.split('\n')[0] }, 'Failed to auto-create service');
       }
     }
 
