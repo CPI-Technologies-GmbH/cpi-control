@@ -222,7 +222,7 @@ export async function listServices(db: DB, params: ServiceQueryParams) {
     conditions.push(sql`(${websites.archived} = 0 OR ${websites.archived} IS NULL)`);
   }
 
-  const limit = params.limit ? parseInt(params.limit, 10) : 100;
+  const limit = params.limit ? parseInt(params.limit, 10) : 500;
   const offset = params.offset ? parseInt(params.offset, 10) : 0;
 
   let query = db

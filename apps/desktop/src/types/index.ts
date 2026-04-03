@@ -372,6 +372,7 @@ export interface ServiceFilters {
   hasOpenIncident?: boolean;
   search?: string;
   includeArchived?: string;
+  limit?: string;
 }
 
 export interface IncidentFilters {

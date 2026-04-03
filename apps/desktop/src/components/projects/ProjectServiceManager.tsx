@@ -14,8 +14,10 @@ export default function ProjectServiceManager({ project }: { project: Project })
   const [assignments, setAssignments] = useState<Map<string, boolean>>(new Map());
   const qc = useQueryClient();
 
-  // Fetch all services only in edit mode
-  const { data: allServices, isLoading } = useServices(editMode ? undefined : { projectId: project.id });
+  // Fetch all services in edit mode (no limit), project services in view mode
+  const { data: allServices, isLoading } = useServices(
+    editMode ? { limit: '10000' } : { projectId: project.id }
+  );
 
   const updateMutation = useMutation({
     mutationFn: async (changes: Array<{ id: string; projectId: string | null }>) => {
