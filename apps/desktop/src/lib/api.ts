@@ -90,9 +90,29 @@ export const projects = {
 // Backend: inventoryRoutes registered with prefix '/api/inventory'
 // Routes: /services, /services/:id
 
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export const services = {
-  list: (filters?: ServiceFilters) =>
-    request<Service[]>(`/api/inventory/services${buildQuery((filters ?? {}) as Record<string, any>)}`),
+  listPaginated: (filters?: ServiceFilters) =>
+    request<PaginatedResponse<Service>>(`/api/inventory/services${buildQuery((filters ?? {}) as Record<string, any>)}`),
+  /** Fetch all services (auto-paginates). Use listPaginated() for manual control. */
+  list: async (filters?: ServiceFilters): Promise<Service[]> => {
+    const pageSize = 200;
+    let offset = 0;
+    const all: Service[] = [];
+    while (true) {
+      const res = await request<PaginatedResponse<Service>>(`/api/inventory/services${buildQuery({ ...(filters ?? {}), limit: String(pageSize), offset: String(offset) } as Record<string, any>)}`);
+      all.push(...res.data);
+      if (all.length >= res.total || res.data.length < pageSize) break;
+      offset += pageSize;
+    }
+    return all;
+  },
   get: (id: string) => request<Service>(`/api/inventory/services/${id}`),
   create: (data: Partial<Service>) =>
     request<Service>('/api/inventory/services', { method: 'POST', body: JSON.stringify(data) }),

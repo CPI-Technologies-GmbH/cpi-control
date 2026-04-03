@@ -222,8 +222,16 @@ export async function listServices(db: DB, params: ServiceQueryParams) {
     conditions.push(sql`(${websites.archived} = 0 OR ${websites.archived} IS NULL)`);
   }
 
-  const limit = params.limit ? parseInt(params.limit, 10) : 500;
+  const limit = params.limit ? parseInt(params.limit, 10) : 50;
   const offset = params.offset ? parseInt(params.offset, 10) : 0;
+
+  // Count total matching records (before limit/offset)
+  const countConditions = [...conditions];
+  let countQuery = db.select({ count: sql<number>`COUNT(*)` }).from(websites);
+  if (countConditions.length > 0) {
+    countQuery = countQuery.where(and(...countConditions)) as any;
+  }
+  const totalCount = (countQuery as any).all()[0]?.count || 0;
 
   let query = db
     .select({
@@ -296,7 +304,7 @@ export async function listServices(db: DB, params: ServiceQueryParams) {
     );
   }
 
-  return results;
+  return { data: results, total: totalCount, limit, offset };
 }
 
 export async function getService(db: DB, id: string) {

@@ -373,6 +373,7 @@ export interface ServiceFilters {
   search?: string;
   includeArchived?: string;
   limit?: string;
+  offset?: string;
 }
 
 export interface IncidentFilters {
