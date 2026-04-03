@@ -45,6 +45,8 @@ export default async function agentLifecycleRoutes(app: FastifyInstance) {
       privateKeyPath?: string;
       password?: string;
       agentVersion?: string;
+      locationCity?: string;
+      locationCountry?: string;
       config?: Record<string, unknown>;
     };
   }>('/agents/install', async (request, reply) => {
@@ -65,6 +67,8 @@ export default async function agentLifecycleRoutes(app: FastifyInstance) {
         port: body.port || 22,
         username: body.username,
         status: 'installing',
+        locationCity: body.locationCity || null,
+        locationCountry: body.locationCountry || null,
         config: {
           ...(body.config || {}),
           ...(body.privateKeyPath && { privateKeyPath: body.privateKeyPath }),
@@ -279,6 +283,9 @@ export default async function agentLifecycleRoutes(app: FastifyInstance) {
       host?: string;
       port?: number;
       username?: string;
+      locationCity?: string | null;
+      locationCountry?: string | null;
+      publicKey?: string | null;
       config?: Record<string, unknown>;
     };
   }>('/agents/:id/settings', async (request, reply) => {
@@ -300,6 +307,9 @@ export default async function agentLifecycleRoutes(app: FastifyInstance) {
         ...(body.host !== undefined && { host: body.host }),
         ...(body.port !== undefined && { port: body.port }),
         ...(body.username !== undefined && { username: body.username }),
+        ...(body.locationCity !== undefined && { locationCity: body.locationCity }),
+        ...(body.locationCountry !== undefined && { locationCountry: body.locationCountry }),
+        ...(body.publicKey !== undefined && { publicKey: body.publicKey }),
         ...(body.config !== undefined && { config: body.config }),
         updatedAt: now,
       })

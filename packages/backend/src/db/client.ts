@@ -367,4 +367,41 @@ export function runMigrations(db: DB): void {
   try {
     sqlite.exec(`ALTER TABLE websites ADD COLUMN muted_until TEXT`);
   } catch (_err) { /* already exists */ }
+
+  // Migration: add location and public key columns to remote_agents
+  try {
+    sqlite.exec(`ALTER TABLE remote_agents ADD COLUMN location_city TEXT`);
+  } catch (_err) { /* already exists */ }
+  try {
+    sqlite.exec(`ALTER TABLE remote_agents ADD COLUMN location_country TEXT`);
+  } catch (_err) { /* already exists */ }
+  try {
+    sqlite.exec(`ALTER TABLE remote_agents ADD COLUMN public_key TEXT`);
+  } catch (_err) { /* already exists */ }
+
+  // Migration: add public_name and public_description to websites
+  try {
+    sqlite.exec(`ALTER TABLE websites ADD COLUMN public_name TEXT`);
+  } catch (_err) { /* already exists */ }
+  try {
+    sqlite.exec(`ALTER TABLE websites ADD COLUMN public_description TEXT`);
+  } catch (_err) { /* already exists */ }
+
+  // Migration: create status_pages table
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS status_pages (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      domain TEXT NOT NULL,
+      agent_id TEXT REFERENCES remote_agents(id) ON DELETE CASCADE,
+      theme TEXT NOT NULL DEFAULT 'dark',
+      branding_logo TEXT,
+      branding_color TEXT,
+      branding_company TEXT,
+      config TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
 }

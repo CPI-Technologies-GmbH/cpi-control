@@ -7,6 +7,8 @@ export default function AgentInstaller() {
   const [username, setUsername] = useState('root');
   const [sshKeyPath, setSshKeyPath] = useState('~/.ssh/id_rsa');
   const [port, setPort] = useState('22');
+  const [locationCity, setLocationCity] = useState('');
+  const [locationCountry, setLocationCountry] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const installMutation = useInstallAgent();
@@ -30,6 +32,8 @@ export default function AgentInstaller() {
       username: username.trim(),
       sshKeyPath: sshKeyPath.trim() || undefined,
       port: parseInt(port, 10),
+      locationCity: locationCity.trim() || undefined,
+      locationCountry: locationCountry.trim() || undefined,
     });
   }
 
@@ -90,6 +94,27 @@ export default function AgentInstaller() {
               max={65535}
             />
             {errors.port && <p className="text-xs text-red-400 mt-1">{errors.port}</p>}
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Location City</label>
+            <input
+              type="text"
+              value={locationCity}
+              onChange={(e) => setLocationCity(e.target.value)}
+              className="input"
+              placeholder="Frankfurt"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Location Country (ISO code)</label>
+            <input
+              type="text"
+              value={locationCountry}
+              onChange={(e) => setLocationCountry(e.target.value)}
+              className="input"
+              placeholder="DE"
+              maxLength={2}
+            />
           </div>
         </div>
 

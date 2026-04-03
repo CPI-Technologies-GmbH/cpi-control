@@ -15,6 +15,7 @@ import CronJobList from '@/components/cronjobs/CronJobList';
 import LogViewer from '@/components/logs/LogViewer';
 import LogLiveWindow from '@/components/logs/LogLiveWindow';
 import AgentManagement from '@/components/agent/AgentManagement';
+import StatusPageList from '@/components/statuspages/StatusPageList';
 import Settings from '@/components/settings/Settings';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 
@@ -66,6 +67,7 @@ export default function App() {
                 <Route path="/incidents" element={<IncidentListPage />} />
                 <Route path="/incidents/:id" element={<IncidentDetail />} />
                 <Route path="/logs" element={<LogViewer />} />
+                <Route path="/statuspages" element={<StatusPageList />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/settings/agent" element={<AgentManagement />} />
               </Routes>

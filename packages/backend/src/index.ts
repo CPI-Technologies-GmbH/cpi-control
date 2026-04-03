@@ -33,6 +33,7 @@ import cronjobRoutes from './modules/cronjobs/routes.js';
 import kubernetesRoutes from './modules/kubernetes/routes.js';
 import vercelRoutes from './modules/vercel/routes.js';
 import settingsRoutes from './modules/settings/routes.js';
+import statusPageRoutes from './modules/statuspages/routes.js';
 import eventStreamRoutes from './modules/events/routes.js';
 import healthEventReceiver from './webhooks/health-event-receiver.js';
 import { dashboardRoutes } from './dashboard.js';
@@ -194,6 +195,7 @@ export async function buildApp(config: ServerConfig = {}): Promise<FastifyInstan
   await app.register(kubernetesRoutes, { prefix: '/api' });
   await app.register(vercelRoutes, { prefix: '/api' });
   await app.register(settingsRoutes, { prefix: '/api' });
+  await app.register(statusPageRoutes, { prefix: '/api' });
   await app.register(licenseRoutes, { prefix: '/api' });
   await app.register(eventStreamRoutes, { prefix: '/api' });
 

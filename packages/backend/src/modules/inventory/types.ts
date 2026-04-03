@@ -49,6 +49,8 @@ export interface UpdateServiceBody {
   projectId?: string | null;
   archived?: boolean;
   mutedUntil?: string | null;
+  publicName?: string | null;
+  publicDescription?: string | null;
 }
 
 export interface BatchUpdateServicesBody {

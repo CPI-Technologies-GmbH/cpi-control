@@ -250,6 +250,8 @@ export async function listServices(db: DB, params: ServiceQueryParams) {
       metadata: websites.metadata,
       archived: websites.archived,
       mutedUntil: websites.mutedUntil,
+      publicName: websites.publicName,
+      publicDescription: websites.publicDescription,
       createdAt: websites.createdAt,
       updatedAt: websites.updatedAt,
       projectName: projects.name,
@@ -369,6 +371,8 @@ export async function updateService(db: DB, id: string, body: UpdateServiceBody)
       ...(body.projectId !== undefined && { projectId: body.projectId }),
       ...(body.archived !== undefined && { archived: body.archived }),
       ...(body.mutedUntil !== undefined && { mutedUntil: body.mutedUntil }),
+      ...(body.publicName !== undefined && { publicName: body.publicName }),
+      ...(body.publicDescription !== undefined && { publicDescription: body.publicDescription }),
       updatedAt: now,
     })
     .where(eq(websites.id, id))

@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -20,19 +21,20 @@ import (
 
 // Scheduler manages cron-based health check scheduling.
 type Scheduler struct {
-	mu            sync.Mutex
-	cron          *cron.Cron
-	cfgMgr        *config.Manager
-	detector      *incident.Detector
-	buffer        *events.Buffer
-	healthBuffer  *events.HealthResultBuffer
-	notifier      *notify.SlackNotifier
-	httpClient    *http.Client
-	checksTotal   atomic.Int64
-	checksFailed  atomic.Int64
-	workerPool    chan struct{}
-	ctx           context.Context
-	cancel        context.CancelFunc
+	mu             sync.Mutex
+	cron           *cron.Cron
+	cfgMgr         *config.Manager
+	detector       *incident.Detector
+	buffer         *events.Buffer
+	healthBuffer   *events.HealthResultBuffer
+	notifier       *notify.SlackNotifier
+	httpClient     *http.Client
+	checksTotal    atomic.Int64
+	checksFailed   atomic.Int64
+	workerPool     chan struct{}
+	ctx            context.Context
+	cancel         context.CancelFunc
+	resultCallback func(resultJSON []byte)
 }
 
 // NewScheduler creates a new check scheduler.
@@ -108,6 +110,14 @@ func (s *Scheduler) ChecksFailed() int64 {
 	return s.checksFailed.Load()
 }
 
+// SetResultCallback registers a callback that is invoked with the JSON-encoded
+// check result after each health check completes.
+func (s *Scheduler) SetResultCallback(cb func(resultJSON []byte)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.resultCallback = cb
+}
+
 func (s *Scheduler) startCron(cfg *config.Config) error {
 	s.cron = cron.New(cron.WithSeconds())
 
@@ -150,6 +160,15 @@ func (s *Scheduler) runCheck(target config.Target) {
 
 	// Send per-check health result to backend
 	s.reportHealthResult(result)
+
+	// Invoke result callback for sync storage
+	if s.resultCallback != nil {
+		if resultJSON, err := json.Marshal(result); err == nil {
+			s.resultCallback(resultJSON)
+		} else {
+			log.Printf("[scheduler] ERROR: failed to marshal result for callback: %v", err)
+		}
+	}
 
 	// Process through incident detector
 	incidentEvents := s.detector.ProcessResult(result)

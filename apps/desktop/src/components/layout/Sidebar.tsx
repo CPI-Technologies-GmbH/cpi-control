@@ -7,6 +7,7 @@ import {
   Clock,
   AlertTriangle,
   ScrollText,
+  Globe,
   Server,
   Settings,
   ChevronLeft,
@@ -24,6 +25,7 @@ const navigation = [
   { name: 'Cron Jobs', href: '/cronjobs', icon: Clock },
   { name: 'Incidents', href: '/incidents', icon: AlertTriangle },
   { name: 'Logs', href: '/logs', icon: ScrollText },
+  { name: 'Status Pages', href: '/statuspages', icon: Globe },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

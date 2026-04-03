@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.CompanyName}} — System Status</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    background: #ffffff; color: #1a1a1a; line-height: 1.7;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  .container { max-width: 720px; margin: 0 auto; padding: 0 24px; width: 100%; }
+  header { padding: 56px 0 32px; border-bottom: 2px solid #1a1a1a; }
+  header .logo-row { display: flex; align-items: center; gap: 16px; margin-bottom: 4px; }
+  header .logo-row img { height: 36px; width: auto; }
+  header h1 { font-size: 32px; font-weight: 400; letter-spacing: -0.5px; }
+  header .subtitle { color: #666; font-size: 15px; font-style: italic; }
+  .overall-banner {
+    margin: 32px 0; padding: 16px 0; border-bottom: 1px solid #ddd;
+    font-size: 20px; display: flex; align-items: center; gap: 12px;
+  }
+  .overall-banner .indicator {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .project { margin-bottom: 40px; }
+  .project-header { margin-bottom: 16px; padding-top: 8px; }
+  .project-header h2 { font-size: 22px; font-weight: 400; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
+  .project-header p { color: #666; font-size: 14px; margin-top: 4px; font-style: italic; }
+  .service {
+    padding: 14px 0; border-bottom: 1px solid #eee;
+  }
+  .service:last-child { border-bottom: none; }
+  .service-top { display: flex; justify-content: space-between; align-items: baseline; }
+  .service-name { font-size: 16px; }
+  .service-status { font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .service-status .indicator { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .service-desc { font-size: 14px; color: #666; font-style: italic; margin-top: 2px; }
+  .service-meta { display: flex; gap: 20px; font-size: 13px; color: #888; margin-top: 6px; font-family: -apple-system, sans-serif; }
+  .history-bar { display: flex; gap: 1px; height: 20px; align-items: flex-end; margin-top: 10px; }
+  .history-bar .day {
+    flex: 1; min-width: 1px; border-radius: 1px; cursor: default;
+  }
+  .history-labels {
+    display: flex; justify-content: space-between; font-size: 11px; color: #aaa;
+    margin-top: 3px; font-family: -apple-system, sans-serif;
+  }
+  footer {
+    margin-top: auto; padding: 32px 0; border-top: 2px solid #1a1a1a;
+    text-align: center; font-size: 13px; color: #999;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  footer a { color: #666; text-decoration: none; }
+  footer a:hover { color: #1a1a1a; }
+  footer .brand-row { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  footer .brand-row img { height: 16px; width: auto; vertical-align: middle; }
+  .generated { text-align: center; font-size: 12px; color: #aaa; margin: 24px 0 8px; font-family: -apple-system, sans-serif; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo-row">
+      {{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{.CompanyName}}">{{end}}
+      <h1>{{.CompanyName}}</h1>
+    </div>
+    <div class="subtitle">System Status</div>
+  </header>
+
+  {{$overall := "operational"}}
+  {{range .Projects}}{{range .Services}}{{if eq .Status "down"}}{{$overall = "down"}}{{else if eq .Status "degraded"}}{{if ne $overall "down"}}{{$overall = "degraded"}}{{end}}{{end}}{{end}}{{end}}
+
+  <div class="overall-banner">
+    <span class="indicator" style="background:{{statusColor $overall}}"></span>
+    {{if eq $overall "operational"}}All Systems Operational{{else if eq $overall "degraded"}}Some Systems Degraded{{else if eq $overall "down"}}System Outage Detected{{else}}Status Unknown{{end}}
+  </div>
+
+  {{range .Projects}}
+  <div class="project">
+    <div class="project-header">
+      <h2>{{.Name}}</h2>
+      {{if .Description}}<p>{{.Description}}</p>{{end}}
+    </div>
+    {{range .Services}}
+    <div class="service">
+      <div class="service-top">
+        <span class="service-name">{{.Name}}</span>
+        <span class="service-status">
+          <span class="indicator" style="background:{{statusColor .Status}}"></span>
+          {{statusLabel .Status}}
+        </span>
+      </div>
+      {{if .Description}}<div class="service-desc">{{.Description}}</div>{{end}}
+      <div class="service-meta">
+        <span>30d: {{formatUptime .UptimePercent}}</span>
+        <span>7d: {{formatUptime .Uptime7d}}</span>
+        <span>24h: {{formatUptime .Uptime24h}}</span>
+        {{if notNil .ResponseTimeMs}}<span>{{deref .ResponseTimeMs}}ms</span>{{end}}
+      </div>
+      <div class="history-bar">
+        {{range .DayHistory}}
+        <div class="day" style="background:{{statusColor .Status}};height:100%" title="{{.Date}}: {{statusLabel .Status}}"></div>
+        {{end}}
+      </div>
+      <div class="history-labels">
+        <span>90 days ago</span>
+        <span>Today</span>
+      </div>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+
+  <div class="generated">Last updated: {{.GeneratedAt}}</div>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="brand-row">
+      Powered by
+      <a href="https://cpi-control.com">
+        <svg height="16" viewBox="0 0 120 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="24" height="24" rx="6" fill="#3b82f6"/>
+          <path d="M7 12l3 3 7-7" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <text x="30" y="17" font-family="-apple-system,sans-serif" font-size="14" font-weight="700" fill="#666">CPI-Control</text>
+        </svg>
+      </a>
+      &mdash; a product of
+      <a href="https://cpitech.io">
+        <svg height="16" viewBox="0 0 140 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="24" height="24" rx="6" fill="#6366f1"/>
+          <text x="5" y="17" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#fff">CPI</text>
+          <text x="30" y="17" font-family="-apple-system,sans-serif" font-size="13" font-weight="600" fill="#666">CPI Technologies GmbH</text>
+        </svg>
+      </a>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

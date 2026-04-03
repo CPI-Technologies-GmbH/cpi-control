@@ -184,6 +184,9 @@ export default function ServiceDetail() {
   const [editType, setEditType] = useState<ServiceType>('website');
   const [editUrl, setEditUrl] = useState('');
   const [editTags, setEditTags] = useState('');
+  const [editPublicName, setEditPublicName] = useState('');
+  const [editPublicDescription, setEditPublicDescription] = useState('');
+  const [showStatusPageSettings, setShowStatusPageSettings] = useState(false);
 
   function openEditForm() {
     if (!service) return;
@@ -193,6 +196,9 @@ export default function ServiceDetail() {
     setEditType(service.type);
     setEditUrl(service.url || '');
     setEditTags(service.tags?.join(', ') || '');
+    setEditPublicName(service.publicName || '');
+    setEditPublicDescription(service.publicDescription || '');
+    setShowStatusPageSettings(!!(service.publicName || service.publicDescription));
     setIsEditing(true);
   }
 
@@ -216,6 +222,8 @@ export default function ServiceDetail() {
         type: editType,
         url: editUrl || undefined,
         tags: tagsArray.length > 0 ? tagsArray : [],
+        publicName: editPublicName.trim() || null,
+        publicDescription: editPublicDescription.trim() || null,
       },
     });
     setIsEditing(false);
@@ -349,6 +357,46 @@ export default function ServiceDetail() {
               />
             </div>
           </div>
+
+          {/* Status Page Settings (collapsible) */}
+          <div className="mt-4 border border-gray-700/50 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowStatusPageSettings(!showStatusPageSettings)}
+              className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-gray-400 hover:text-gray-300 hover:bg-gray-800/50 transition-colors"
+            >
+              <span className="flex items-center gap-1.5">
+                <Globe size={12} />
+                Status Page Settings
+              </span>
+              <span className="text-gray-600">{showStatusPageSettings ? '\u25B2' : '\u25BC'}</span>
+            </button>
+            {showStatusPageSettings && (
+              <div className="px-4 pb-4 pt-2 grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-700/50">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1.5">Public Name</label>
+                  <input
+                    type="text"
+                    value={editPublicName}
+                    onChange={(e) => setEditPublicName(e.target.value)}
+                    placeholder="Display name for status page"
+                    className="input w-full py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1.5">Public Description</label>
+                  <input
+                    type="text"
+                    value={editPublicDescription}
+                    onChange={(e) => setEditPublicDescription(e.target.value)}
+                    placeholder="Brief description for status page"
+                    className="input w-full py-2 text-sm"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center gap-3 mt-5">
             <button
               onClick={saveEdit}

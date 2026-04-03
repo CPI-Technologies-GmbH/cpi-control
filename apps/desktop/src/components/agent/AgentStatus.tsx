@@ -1,14 +1,30 @@
 import { useAgentList, useRestartAgent, useUninstallAgent } from '@/hooks/useAgentStatus';
 import { statusDotColor, statusBgColor, formatRelativeTime, formatDate } from '@/lib/formatters';
-import { Server, RefreshCw, Trash2, Activity, Wifi, Clock, Hash } from 'lucide-react';
+import { Server, RefreshCw, Trash2, Activity, Wifi, Clock, Hash, MapPin, Key, Copy, Check } from 'lucide-react';
 import clsx from 'clsx';
 import { useState } from 'react';
+
+// Map of ISO country codes to flag emojis
+function countryFlag(code: string | null | undefined): string {
+  if (!code || code.length !== 2) return '';
+  const upper = code.toUpperCase();
+  return String.fromCodePoint(
+    ...upper.split('').map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)
+  );
+}
 
 export default function AgentStatus() {
   const { data: agents, isLoading, error } = useAgentList();
   const restartMutation = useRestartAgent();
   const uninstallMutation = useUninstallAgent();
   const [confirmUninstallId, setConfirmUninstallId] = useState<string | null>(null);
+  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+
+  function copyPublicKey(agentId: string, key: string) {
+    navigator.clipboard.writeText(key);
+    setCopiedKeyId(agentId);
+    setTimeout(() => setCopiedKeyId(null), 2000);
+  }
 
   if (isLoading) {
     return (
@@ -92,6 +108,50 @@ export default function AgentStatus() {
               </div>
             </div>
           </div>
+
+          {/* Location & Public Key */}
+          {(agent.locationCity || agent.locationCountry || agent.publicKey) && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs mb-3">
+              {(agent.locationCity || agent.locationCountry) && (
+                <div className="flex items-center gap-1.5">
+                  <MapPin size={12} className="text-gray-500" />
+                  <div>
+                    <p className="text-gray-500">Location</p>
+                    <p className="text-gray-300">
+                      {[agent.locationCity, agent.locationCountry].filter(Boolean).join(', ')}
+                      {agent.locationCountry && (
+                        <span className="ml-1">{countryFlag(agent.locationCountry)}</span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {agent.publicKey && (
+                <div className="flex items-center gap-1.5 col-span-2">
+                  <Key size={12} className="text-gray-500" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-gray-500">Public Key</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-gray-300 font-mono truncate">
+                        {agent.publicKey.slice(0, 24)}...
+                      </p>
+                      <button
+                        onClick={() => copyPublicKey(agent.id, agent.publicKey!)}
+                        className="text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0"
+                        title="Copy public key"
+                      >
+                        {copiedKeyId === agent.id ? (
+                          <Check size={12} className="text-emerald-400" />
+                        ) : (
+                          <Copy size={12} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center gap-2 pt-2 border-t border-gray-700/50">
             <button

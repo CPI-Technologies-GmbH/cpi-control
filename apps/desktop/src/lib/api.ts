@@ -20,6 +20,7 @@ import type {
   RemoteAgent,
   AgentInstallRequest,
   AgentSettings,
+  StatusPage,
   DashboardSummary,
   HealthCheckResult,
   LogEntry,
@@ -511,6 +512,23 @@ export const vercel = {
     request<VercelProjectDetails>(`/api/vercel/projects/${projectId}${buildQuery({ integrationId })}`),
   deployments: (integrationId: string, projectId?: string, limit?: number) =>
     request<VercelDeployment[]>(`/api/vercel/deployments${buildQuery({ integrationId, projectId, limit })}`),
+};
+
+// ─── Status Pages ───────────────────────────────────────────────────────────
+// Backend: statusPageRoutes registered with prefix '/api'
+// Routes: GET/POST /statuspages, GET/PUT/DELETE /statuspages/:id, POST /statuspages/:id/deploy
+
+export const statusPages = {
+  list: () => request<StatusPage[]>('/api/statuspages'),
+  get: (id: string) => request<StatusPage>(`/api/statuspages/${id}`),
+  create: (data: Partial<StatusPage>) =>
+    request<StatusPage>('/api/statuspages', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<StatusPage>) =>
+    request<StatusPage>(`/api/statuspages/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    request<void>(`/api/statuspages/${id}`, { method: 'DELETE' }),
+  deploy: (id: string) =>
+    request<{ success: boolean }>(`/api/statuspages/${id}/deploy`, { method: 'POST' }),
 };
 
 export { BASE_URL };

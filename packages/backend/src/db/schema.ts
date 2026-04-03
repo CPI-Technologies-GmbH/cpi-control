@@ -32,6 +32,8 @@ export const websites = sqliteTable('websites', {
   metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>(),
   archived: integer('archived', { mode: 'boolean' }).default(false),
   mutedUntil: text('muted_until'), // ISO timestamp, 'forever', or null (not muted)
+  publicName: text('public_name'),
+  publicDescription: text('public_description'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
@@ -212,8 +214,27 @@ export const remoteAgents = sqliteTable('remote_agents', {
   version: text('version'),
   lastHeartbeatAt: text('last_heartbeat_at'),
   installedAt: text('installed_at'),
+  locationCity: text('location_city'),
+  locationCountry: text('location_country'),
+  publicKey: text('public_key'), // Ed25519 public key (base64)
   config: text('config', { mode: 'json' }).$type<Record<string, unknown>>(),
   metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+// ─── Status Pages ───────────────────────────────────────────────────────────
+export const statusPages = sqliteTable('status_pages', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  domain: text('domain').notNull(),
+  agentId: text('agent_id').references(() => remoteAgents.id, { onDelete: 'cascade' }),
+  theme: text('theme').notNull().default('dark'), // dark | light | minimal
+  brandingLogo: text('branding_logo'),
+  brandingColor: text('branding_color'),
+  brandingCompany: text('branding_company'),
+  config: text('config', { mode: 'json' }).$type<Record<string, unknown>>(),
+  isActive: integer('is_active', { mode: 'boolean' }).default(true),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });

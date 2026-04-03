@@ -53,6 +53,8 @@ export interface Service {
   metadata?: Record<string, unknown> | null;
   archived?: boolean;
   mutedUntil?: string | null; // ISO timestamp, 'forever', or null
+  publicName?: string | null;
+  publicDescription?: string | null;
   createdAt: string;
   updatedAt: string;
   // Joined fields (returned by API)
@@ -217,8 +219,26 @@ export interface RemoteAgent {
   version?: string | null;
   lastHeartbeatAt?: string | null;
   installedAt?: string | null;
+  locationCity?: string | null;
+  locationCountry?: string | null;
+  publicKey?: string | null;
   config?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StatusPage {
+  id: string;
+  name: string;
+  domain: string;
+  agentId: string;
+  theme: 'dark' | 'light' | 'minimal';
+  brandingLogo?: string | null;
+  brandingColor?: string | null;
+  brandingCompany?: string | null;
+  config?: Record<string, unknown> | null;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -418,6 +438,8 @@ export interface AgentInstallRequest {
   username: string;
   sshKeyPath?: string;
   port?: number;
+  locationCity?: string;
+  locationCountry?: string;
 }
 
 export interface AgentSettings {
