@@ -58,9 +58,16 @@ export default function StatusPageForm({ page, agents, onClose }: Props) {
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<'success' | 'error' | null>(null);
 
+  const [limitError, setLimitError] = useState<string | null>(null);
+
   const createMutation = useMutation({
     mutationFn: (data: Partial<StatusPage>) => api.create(data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['statuspages'] }); onClose(); },
+    onError: (err: Error) => {
+      if (err.message.includes('403')) {
+        try { setLimitError(JSON.parse(err.message.match(/- (.+)$/)?.[1] || '{}').error); } catch { setLimitError('Status page limit reached. Please upgrade your plan.'); }
+      }
+    },
   });
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<StatusPage> }) => api.update(id, data),
@@ -187,6 +194,17 @@ export default function StatusPageForm({ page, agents, onClose }: Props) {
         </button>
       </div>
 
+      {limitError && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3 flex items-start gap-3 mb-4">
+          <span className="text-amber-400 text-lg mt-0.5">&#9888;</span>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-300">{limitError}</p>
+            <a href="https://cpi-control-website.vercel.app/login" target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300 mt-1 inline-block">
+              Upgrade your plan &rarr;
+            </a>
+          </div>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Basic Info */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -359,8 +377,8 @@ export default function StatusPageForm({ page, agents, onClose }: Props) {
           </button>
           <button type="button" onClick={onClose} className="btn-ghost text-sm">Cancel</button>
           {deployResult === 'success' && <span className="text-xs text-emerald-400">Deployed successfully!</span>}
-          {deployResult === 'error' && <span className="text-xs text-red-400">Deploy failed</span>}
-          {(createMutation.isError || updateMutation.isError) && (
+          {deployResult === 'error' && !limitError && <span className="text-xs text-red-400">Deploy failed</span>}
+          {(createMutation.isError || updateMutation.isError) && !limitError && (
             <span className="text-xs text-red-400">Failed to save</span>
           )}
         </div>

@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { websites, remoteAgents } from '../../db/schema.js';
+import { websites, remoteAgents, statusPages } from '../../db/schema.js';
 
 export default async function licenseRoutes(app: FastifyInstance) {
   const db = app.db;
@@ -8,7 +8,7 @@ export default async function licenseRoutes(app: FastifyInstance) {
   app.get('/license', async (_request, reply) => {
     const lm = app.licenseManager;
     if (!lm) {
-      return reply.send({ plan: 'free', status: 'free', limits: { maxServices: 50, maxAgents: 1 } });
+      return reply.send({ plan: 'free', status: 'free', limits: { maxServices: 50, maxAgents: 1, maxStatusPages: 2 } });
     }
 
     const license = lm.getLicense();
@@ -18,12 +18,13 @@ export default async function licenseRoutes(app: FastifyInstance) {
     // Get current usage
     const serviceCount = db.select().from(websites).all().length;
     const agentCount = db.select().from(remoteAgents).all().length;
+    const statusPageCount = db.select().from(statusPages).all().length;
 
     return reply.send({
       plan: license?.plan || 'free',
       status,
       limits,
-      usage: { services: serviceCount, agents: agentCount },
+      usage: { services: serviceCount, agents: agentCount, statusPages: statusPageCount },
       expiresAt: license?.expiresAt || null,
       lastValidated: license?.lastValidated || null,
       offlineSince: license?.offlineSince || null,

@@ -128,27 +128,39 @@ export class LicenseManager {
     return this.license.limits;
   }
 
-  // ── Enforcement (soft) ────────────────────────────────────────────────
+  // ── Enforcement (hard) ────────────────────────────────────────────────
 
-  checkServiceLimit(currentCount: number): { allowed: boolean; warning?: string } {
+  checkServiceLimit(currentCount: number): { allowed: boolean; message?: string } {
     const limits = this.getLimits();
     if (currentCount >= limits.maxServices) {
       const plan = this.license?.plan || 'free';
       return {
-        allowed: true, // soft enforcement — always allow
-        warning: `You have ${currentCount} services (${plan} plan limit: ${limits.maxServices}). Consider upgrading for more capacity.`,
+        allowed: false,
+        message: `Service limit reached (${limits.maxServices} for ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan). Please upgrade to add more integrations.`,
       };
     }
     return { allowed: true };
   }
 
-  checkAgentLimit(currentCount: number): { allowed: boolean; warning?: string } {
+  checkAgentLimit(currentCount: number): { allowed: boolean; message?: string } {
     const limits = this.getLimits();
     if (currentCount >= limits.maxAgents) {
       const plan = this.license?.plan || 'free';
       return {
-        allowed: true,
-        warning: `You have ${currentCount} agents (${plan} plan limit: ${limits.maxAgents}). Consider upgrading for more.`,
+        allowed: false,
+        message: `Agent limit reached (${limits.maxAgents} for ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan). Please upgrade to add more agents.`,
+      };
+    }
+    return { allowed: true };
+  }
+
+  checkStatusPageLimit(currentCount: number): { allowed: boolean; message?: string } {
+    const limits = this.getLimits();
+    if (currentCount >= limits.maxStatusPages) {
+      const plan = this.license?.plan || 'free';
+      return {
+        allowed: false,
+        message: `Status page limit reached (${limits.maxStatusPages} for ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan). Please upgrade to create more status pages.`,
       };
     }
     return { allowed: true };

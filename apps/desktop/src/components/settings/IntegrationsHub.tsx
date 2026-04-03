@@ -47,6 +47,7 @@ export default function IntegrationsHub() {
   const [kubeconfigName, setKubeconfigName] = useState('');
   const [showKubeNameInput, setShowKubeNameInput] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [limitError, setLimitError] = useState<string | null>(null);
 
   // Fetch providers (secrets) and integrations
   const { data: providers, isLoading: providersLoading } = useQuery({
@@ -71,9 +72,17 @@ export default function IntegrationsHub() {
     mutationFn: ({ key, value }: { key: string; value: string }) =>
       secApi.save('', key, value),
     onSuccess: () => {
+      setLimitError(null);
       qc.invalidateQueries({ queryKey: ['secrets'] });
       qc.invalidateQueries({ queryKey: ['integrations'] });
       setSecretInputs({});
+    },
+    onError: (err: Error) => {
+      if (err.message.includes('403')) {
+        const match = err.message.match(/- (.+)$/);
+        const body = match?.[1];
+        try { setLimitError(JSON.parse(body || '{}').error); } catch { setLimitError('Service limit reached. Please upgrade your plan.'); }
+      }
     },
   });
 
@@ -89,10 +98,18 @@ export default function IntegrationsHub() {
     mutationFn: ({ name, value }: { name: string; value: string }) =>
       secApi.saveKubeconfig(name, value),
     onSuccess: () => {
+      setLimitError(null);
       qc.invalidateQueries({ queryKey: ['secrets'] });
       qc.invalidateQueries({ queryKey: ['integrations'] });
       setKubeconfigName('');
       setShowKubeNameInput(false);
+    },
+    onError: (err: Error) => {
+      if (err.message.includes('403')) {
+        const match = err.message.match(/- (.+)$/);
+        const body = match?.[1];
+        try { setLimitError(JSON.parse(body || '{}').error); } catch { setLimitError('Service limit reached. Please upgrade your plan.'); }
+      }
     },
   });
 
@@ -184,6 +201,18 @@ export default function IntegrationsHub() {
 
   return (
     <div className="space-y-3">
+      {limitError && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3 flex items-start gap-3">
+          <span className="text-amber-400 text-lg mt-0.5">&#9888;</span>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-300">{limitError}</p>
+            <a href="https://cpi-control-website.vercel.app/login" target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300 mt-1 inline-block">
+              Upgrade your plan &rarr;
+            </a>
+          </div>
+          <button onClick={() => setLimitError(null)} className="text-gray-500 hover:text-gray-300 text-xs">&times;</button>
+        </div>
+      )}
       {providers.map((prov) => {
         const integration = getIntegrationForProvider(prov.id);
         const isExpanded = expandedProvider === prov.id;

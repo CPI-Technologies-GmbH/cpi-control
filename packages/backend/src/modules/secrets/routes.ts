@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { KeychainSecretStore, type SecretStore } from './keychain.js';
 import { FallbackEncryptedStore } from './fallback-encrypted.js';
 import { createChildLogger } from '../../shared/logger.js';
-import { integrationConfigs } from '../../db/schema.js';
+import { integrationConfigs, websites } from '../../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
 
@@ -119,6 +119,17 @@ export default async function secretsRoutes(app: FastifyInstance) {
           ? 'kubeconfig'
           : `kubeconfig:${request.params.name}`;
       const s = await getStore();
+
+      // License check: if this is a NEW kubeconfig (not replacing existing), enforce service limit
+      const existingValue = await s.get(key);
+      if (existingValue === null && app.licenseManager) {
+        const serviceCount = app.db.select().from(websites).all().length;
+        const check = app.licenseManager.checkServiceLimit(serviceCount);
+        if (!check.allowed) {
+          return reply.status(403).send({ error: check.message });
+        }
+      }
+
       await s.set(key, request.body.value);
 
       // Auto-create Kubernetes integration
@@ -168,10 +179,23 @@ export default async function secretsRoutes(app: FastifyInstance) {
       }
 
       const s = await getStore();
+
+      // License check: if this is a new integration secret, enforce service limit
+      const mapping = SECRET_TO_PROVIDER[key];
+      if (mapping && app.licenseManager) {
+        const existingValue = await s.get(key);
+        if (existingValue === null) {
+          const serviceCount = app.db.select().from(websites).all().length;
+          const check = app.licenseManager.checkServiceLimit(serviceCount);
+          if (!check.allowed) {
+            return reply.status(403).send({ error: check.message });
+          }
+        }
+      }
+
       await s.set(key, value);
 
       // Auto-create integration if this secret maps to a provider
-      const mapping = SECRET_TO_PROVIDER[key];
       if (mapping) {
         ensureIntegration(mapping.provider, mapping.name);
       }

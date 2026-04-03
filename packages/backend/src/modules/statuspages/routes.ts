@@ -44,6 +44,15 @@ export default async function statusPageRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'name, domain, and agentId are required' });
     }
 
+    // License check: enforce status page limit
+    if (app.licenseManager) {
+      const currentCount = db.select().from(statusPages).all().length;
+      const check = app.licenseManager.checkStatusPageLimit(currentCount);
+      if (!check.allowed) {
+        return reply.status(403).send({ error: check.message });
+      }
+    }
+
     // Verify agent exists
     const agentRows = db.select().from(remoteAgents).where(eq(remoteAgents.id, body.agentId)).all();
     if (agentRows.length === 0) {

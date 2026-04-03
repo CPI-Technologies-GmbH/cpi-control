@@ -1,6 +1,7 @@
 export interface LicenseLimits {
   maxServices: number;
   maxAgents: number;
+  maxStatusPages: number;
 }
 
 export interface LicenseInfo {
@@ -15,7 +16,7 @@ export interface LicenseInfo {
 
 export type LicenseStatus = 'active' | 'expired' | 'grace' | 'free';
 
-export const FREE_LIMITS: LicenseLimits = { maxServices: 50, maxAgents: 1 };
+export const FREE_LIMITS: LicenseLimits = { maxServices: 50, maxAgents: 1, maxStatusPages: 2 };
 export const GRACE_PERIOD_DAYS = 7;
 export const VALIDATION_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 export const LICENSE_SERVER_URL = process.env.LICENSE_SERVER_URL || 'https://cpi-control-website.vercel.app';
