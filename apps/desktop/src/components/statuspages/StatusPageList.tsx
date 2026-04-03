@@ -8,10 +8,7 @@ import {
   Plus,
   Pencil,
   Trash2,
-  Upload,
-  CheckCircle2,
-  XCircle,
-  Loader2,
+  ExternalLink,
   Server,
 } from 'lucide-react';
 import clsx from 'clsx';
@@ -40,12 +37,7 @@ export default function StatusPageList() {
     },
   });
 
-  const deployMutation = useMutation({
-    mutationFn: (id: string) => api.deploy(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['statuspages'] });
-    },
-  });
+  // deploy mutation removed — deploy now happens from the edit form
 
   const agentMap = new Map<string, RemoteAgent>(
     (agents || []).map((a) => [a.id, a])
@@ -177,19 +169,15 @@ export default function StatusPageList() {
                   </div>
 
                   <div className="flex items-center gap-2 ml-4">
-                    <button
-                      onClick={() => deployMutation.mutate(page.id)}
-                      disabled={deployMutation.isPending}
+                    <a
+                      href={`https://${page.domain}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="btn-ghost text-xs flex items-center gap-1.5 py-1"
-                      title="Deploy to agent"
                     >
-                      {deployMutation.isPending ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : (
-                        <Upload size={12} />
-                      )}
-                      Deploy
-                    </button>
+                      <ExternalLink size={12} />
+                      Open
+                    </a>
                     <button
                       onClick={() => handleEdit(page)}
                       className="btn-ghost text-xs flex items-center gap-1.5 py-1"
@@ -224,19 +212,6 @@ export default function StatusPageList() {
                   </div>
                 </div>
 
-                {/* Deploy result feedback */}
-                {deployMutation.isSuccess && deployMutation.variables === page.id && (
-                  <div className="flex items-center gap-2 text-xs text-emerald-400 mt-2">
-                    <CheckCircle2 size={12} />
-                    Deployed successfully
-                  </div>
-                )}
-                {deployMutation.isError && deployMutation.variables === page.id && (
-                  <div className="flex items-center gap-2 text-xs text-red-400 mt-2">
-                    <XCircle size={12} />
-                    Deploy failed
-                  </div>
-                )}
               </div>
             );
           })}

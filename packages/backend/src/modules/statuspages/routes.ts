@@ -208,22 +208,32 @@ export default async function statusPageRoutes(app: FastifyInstance) {
         await ssh.connect(connectOptions);
       }
 
-      // Deploy the status page config as JSON to the agent
-      const configJson = JSON.stringify({
-        id: page.id,
-        name: page.name,
-        domain: page.domain,
-        theme: page.theme,
-        brandingLogo: page.brandingLogo,
-        brandingColor: page.brandingColor,
-        brandingCompany: page.brandingCompany,
-        config: page.config,
-        isActive: page.isActive,
-      }, null, 2);
+      // Build the full statuspage.json with all pages for this agent
+      const allPages = db.select().from(statusPages)
+        .where(eq(statusPages.agentId, page.agentId!))
+        .all();
 
-      await ssh.execCommand(`mkdir -p /etc/opsboard-agent/statuspages`);
-      await ssh.execCommand(`cat > /etc/opsboard-agent/statuspages/${page.id}.json << 'EOFCONFIG'\n${configJson}\nEOFCONFIG`);
-      await ssh.execCommand('sudo systemctl reload opsboard-agent || true');
+      const statusPageConfig = {
+        pages: allPages.filter((p: any) => p.isActive).map((p: any) => {
+          const cfg = (p.config || {}) as Record<string, unknown>;
+          return {
+            id: p.id,
+            domain: p.domain,
+            theme: p.theme,
+            branding: {
+              logo_url: p.brandingLogo || '',
+              primary_color: p.brandingColor || '#3b82f6',
+              company_name: p.brandingCompany || '',
+            },
+            projects: (cfg.projects as any[]) || [],
+          };
+        }),
+      };
+
+      const configJson = JSON.stringify(statusPageConfig, null, 2);
+
+      await ssh.execCommand(`cat > /etc/opsboard-agent/statuspage.json << 'EOFCONFIG'\n${configJson}\nEOFCONFIG`);
+      await ssh.execCommand('sudo systemctl restart opsboard-agent');
 
       ssh.dispose();
 

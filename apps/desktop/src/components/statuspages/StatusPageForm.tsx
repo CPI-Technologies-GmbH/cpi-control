@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { statusPages as api, services as servicesApi, projects as projectsApi } from '@/lib/api';
 import type { StatusPage, RemoteAgent, Service, Project } from '@/types';
-import { X, Loader2, Moon, Sun, Minus, Globe, Check, Upload, Image } from 'lucide-react';
+import { X, Loader2, Moon, Sun, Minus, Globe, Check, Upload, Rocket } from 'lucide-react';
 import clsx from 'clsx';
 
 interface Props {
@@ -55,15 +55,46 @@ export default function StatusPageForm({ page, agents, onClose }: Props) {
   const selectedProjectIds = (pageConfig.projectIds as string[] | undefined) || [];
   const [projectIds, setProjectIds] = useState<string[]>(selectedProjectIds);
 
+  const [deploying, setDeploying] = useState(false);
+  const [deployResult, setDeployResult] = useState<'success' | 'error' | null>(null);
+
   const createMutation = useMutation({
     mutationFn: (data: Partial<StatusPage>) => api.create(data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['statuspages'] }); onClose(); },
   });
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<StatusPage> }) => api.update(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['statuspages'] }); onClose(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['statuspages'] }); },
   });
   const isPending = createMutation.isPending || updateMutation.isPending;
+
+  async function handleSaveAndDeploy(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !domain.trim() || !agentId) return;
+
+    const data = buildFormData();
+    setDeploying(true);
+    setDeployResult(null);
+
+    try {
+      let pageId = page?.id;
+      if (isEditing && page) {
+        await updateMutation.mutateAsync({ id: page.id, data });
+      } else {
+        const created = await createMutation.mutateAsync(data);
+        pageId = (created as any).id;
+      }
+      if (pageId) {
+        await api.deploy(pageId);
+        setDeployResult('success');
+        setTimeout(() => onClose(), 1500);
+      }
+    } catch {
+      setDeployResult('error');
+    } finally {
+      setDeploying(false);
+    }
+  }
 
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -89,16 +120,12 @@ export default function StatusPageForm({ page, agents, onClose }: Props) {
     }
   }
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || !domain.trim() || !agentId) return;
-
+  function buildFormData(): Partial<StatusPage> {
     const config: Record<string, unknown> = {};
     if (selectionMode === 'services') {
       config.services = serviceIds;
     } else {
       config.projectIds = projectIds;
-      // Include project data so agent can use public names
       config.projects = (allProjects || [])
         .filter((p) => projectIds.includes(p.id))
         .map((p) => ({
@@ -116,7 +143,7 @@ export default function StatusPageForm({ page, agents, onClose }: Props) {
         }));
     }
 
-    const data: Partial<StatusPage> = {
+    return {
       name: name.trim(),
       domain: domain.trim(),
       agentId,
@@ -127,7 +154,13 @@ export default function StatusPageForm({ page, agents, onClose }: Props) {
       config,
       isActive,
     };
+  }
 
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !domain.trim() || !agentId) return;
+
+    const data = buildFormData();
     if (isEditing && page) {
       updateMutation.mutate({ id: page.id, data });
     } else {
@@ -315,13 +348,20 @@ export default function StatusPageForm({ page, agents, onClose }: Props) {
 
         {/* Actions */}
         <div className="flex items-center gap-3 pt-2">
-          <button type="submit" disabled={isPending || !name.trim() || !domain.trim() || !agentId} className="btn-primary flex items-center gap-2">
-            {isPending ? (<><Loader2 size={14} className="animate-spin" />{isEditing ? 'Saving...' : 'Creating...'}</>) :
-              (<><Check size={14} />{isEditing ? 'Save Changes' : 'Create Status Page'}</>)}
+          <button type="submit" disabled={isPending || deploying || !name.trim() || !domain.trim() || !agentId} className="btn-secondary flex items-center gap-2">
+            {isPending ? (<><Loader2 size={14} className="animate-spin" />Saving...</>) :
+              (<><Check size={14} />{isEditing ? 'Save' : 'Create'}</>)}
           </button>
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="button" onClick={handleSaveAndDeploy} disabled={isPending || deploying || !name.trim() || !domain.trim() || !agentId}
+            className="btn-primary flex items-center gap-2">
+            {deploying ? (<><Loader2 size={14} className="animate-spin" />Deploying...</>) :
+              (<><Rocket size={14} />Save &amp; Deploy</>)}
+          </button>
+          <button type="button" onClick={onClose} className="btn-ghost text-sm">Cancel</button>
+          {deployResult === 'success' && <span className="text-xs text-emerald-400">Deployed successfully!</span>}
+          {deployResult === 'error' && <span className="text-xs text-red-400">Deploy failed</span>}
           {(createMutation.isError || updateMutation.isError) && (
-            <span className="text-xs text-red-400">Failed to {isEditing ? 'update' : 'create'} status page</span>
+            <span className="text-xs text-red-400">Failed to save</span>
           )}
         </div>
       </form>
