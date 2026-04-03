@@ -376,8 +376,8 @@ export class HealthChecker {
       if (code === 404) {
         return { status: 'healthy', statusCode: code, responseTimeMs, errorMessage: null };
       }
-      if (code === 401 || code === 403) {
-        return { status: 'healthy', statusCode: code, responseTimeMs, errorMessage: 'Auth required' };
+      if (code === 401 || code === 403 || code === 406) {
+        return { status: 'healthy', statusCode: code, responseTimeMs, errorMessage: code === 406 ? 'Not Acceptable' : 'Auth required' };
       }
       if (code >= 500) {
         const details = await captureDetails();

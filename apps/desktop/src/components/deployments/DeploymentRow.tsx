@@ -14,6 +14,18 @@ interface Props {
 export default function DeploymentRow({ deployment, onClick }: Props) {
   const dep = deployment;
 
+  // Fallback label when no matched service: use repo name from metadata
+  const meta = dep.metadata as Record<string, unknown> | null | undefined;
+  const fallbackLabel = (() => {
+    if (dep.serviceName) return null;
+    const wf = meta?.workflowName as string | undefined;
+    if (wf) return wf;
+    const repo = meta?.repo as string | undefined;
+    if (repo) return repo.includes('/') ? repo.split('/').pop()! : repo;
+    if (dep.commitMessage) return truncate(dep.commitMessage.split('\n')[0], 40);
+    return null;
+  })();
+
   return (
     <tr
       className="hover:bg-gray-800/30 transition-colors border-b border-gray-800/50 cursor-pointer"
@@ -27,10 +39,14 @@ export default function DeploymentRow({ deployment, onClick }: Props) {
             className="text-sm font-medium text-gray-200 hover:text-blue-400 transition-colors"
             onClick={(e) => e.stopPropagation()}
           >
-            {dep.serviceName || '—'}
+            {dep.serviceName || fallbackLabel || '—'}
           </Link>
+        ) : dep.serviceName ? (
+          <p className="text-sm font-medium text-gray-200">{dep.serviceName}</p>
+        ) : fallbackLabel ? (
+          <p className="text-sm font-medium text-gray-500">{fallbackLabel}</p>
         ) : (
-          <p className="text-sm font-medium text-gray-200">{dep.serviceName || '—'}</p>
+          <p className="text-sm font-medium text-gray-200">—</p>
         )}
         <p className="text-xs text-gray-500">{dep.projectName || ''}</p>
       </td>

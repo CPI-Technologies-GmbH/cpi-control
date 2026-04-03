@@ -1342,6 +1342,12 @@ export class SyncScheduler {
           const svc = this.db.select({ name: websites.name }).from(websites).where(eq(websites.id, resolvedServiceId)).get();
           if (svc) serviceName = svc.name;
         }
+        // For GitHub Actions: use workflowName or repo name instead of numeric externalId
+        if (!serviceName) serviceName = (meta?.workflowName as string) || '';
+        if (!serviceName) {
+          const repo = meta?.repo as string | undefined;
+          if (repo) serviceName = repo.includes('/') ? repo.split('/').pop()! : repo;
+        }
         if (!serviceName) serviceName = dep.externalId;
 
         if (existing.length > 0) {

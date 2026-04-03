@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useDeployments } from '@/hooks/useDeployments';
 import { useDeploymentFilterStore } from '@/stores/filterStore';
 import DeploymentRow from './DeploymentRow';
@@ -14,6 +15,7 @@ const providerOptions: DeploymentProvider[] = ['vercel', 'github_actions', 'sema
 const envOptions: Environment[] = ['production', 'staging', 'development'];
 
 export default function DeploymentBoard() {
+  const queryClient = useQueryClient();
   const [showFilters, setShowFilters] = useState(false);
   const [selectedDeployment, setSelectedDeployment] = useState<DeploymentRecord | null>(null);
   const filters = useDeploymentFilterStore();
@@ -56,7 +58,10 @@ export default function DeploymentBoard() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => refetch()}
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ['deployments'] });
+              refetch();
+            }}
             className="btn-ghost py-1.5 text-sm flex items-center gap-1.5"
           >
             <RefreshCw size={14} />
