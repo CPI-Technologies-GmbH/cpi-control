@@ -473,6 +473,7 @@ export const settings = {
 
 export interface UpdateInfo {
   currentVersion?: string;
+  latestVersion?: string | null;
   latestTag: string;
   latestName: string;
   body: string;

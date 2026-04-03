@@ -172,23 +172,11 @@ export default function UpdateSettings() {
     retry: false,
   });
 
-  const [installing, setInstalling] = useState(false);
-
-  async function handleAppUpdate() {
-    setInstalling(true);
-    try {
-      const { check } = await import('@tauri-apps/plugin-updater');
-      const update = await check();
-      if (update) {
-        await update.downloadAndInstall();
-        const { relaunch } = await import('@tauri-apps/plugin-process');
-        await relaunch();
-      }
-    } catch {
-      // Not in Tauri context or update failed
-    } finally {
-      setInstalling(false);
-    }
+  function handleAppUpdate() {
+    const dmgAsset = appUpdate.data?.assets.find((a) => a.name.includes('aarch64') && a.name.endsWith('.dmg'))
+      ?? appUpdate.data?.assets.find((a) => a.name.endsWith('.dmg'));
+    const url = dmgAsset?.url ?? 'https://github.com/CPI-Technologies-GmbH/cpi-control/releases/tag/latest';
+    window.open(url, '_blank');
   }
 
   function checkAll() {
@@ -225,17 +213,16 @@ export default function UpdateSettings() {
         isLoading={appUpdate.isFetching}
         error={appUpdate.error}
         onRefresh={() => appUpdate.refetch()}
-        currentVersion={appUpdate.data?.currentVersion ?? '0.1.0'}
+        currentVersion={appUpdate.data?.currentVersion}
       />
 
-      {appUpdate.data && (
+      {appUpdate.data && appUpdate.data.latestVersion && appUpdate.data.currentVersion && appUpdate.data.latestVersion !== appUpdate.data.currentVersion && (
         <button
           onClick={handleAppUpdate}
-          disabled={installing}
           className="btn-primary text-sm flex items-center gap-2"
         >
           <Download size={14} />
-          {installing ? 'Installiert...' : 'Update & Neustart'}
+          Update herunterladen (v{appUpdate.data.latestVersion})
         </button>
       )}
 

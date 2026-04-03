@@ -17,7 +17,25 @@ import type { SecretStore } from '../secrets/keychain.js';
 const log = createChildLogger('settings-routes');
 
 const GITHUB_REPO = 'CPI-Technologies-GmbH/cpi-control';
-const APP_VERSION = '0.1.0';
+
+// Read version from package.json (CI injects the real version via sync-version.mjs)
+import { readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const APP_VERSION = (() => {
+  try {
+    const __dirname2 = dirname(fileURLToPath(import.meta.url));
+    // Walk up to find package.json (works from both src/ and dist/)
+    for (const rel of ['../../../package.json', '../../package.json', '../package.json', './package.json']) {
+      try {
+        const pkg = JSON.parse(readFileSync(resolve(__dirname2, rel), 'utf-8'));
+        if (pkg.name && pkg.version) return pkg.version;
+      } catch { /* try next */ }
+    }
+  } catch { /* fallback */ }
+  return '0.1.0';
+})();
 
 let secretStore: SecretStore;
 async function getSecretStore(): Promise<SecretStore> {
@@ -161,8 +179,16 @@ export default async function settingsRoutes(app: FastifyInstance) {
       }
       const release = (await res.json()) as GitHubRelease;
 
+      // Extract version from asset filenames (e.g. CPI-Control_0.1.26_aarch64.dmg)
+      let latestVersion: string | undefined;
+      for (const a of release.assets) {
+        const m = a.name.match(/CPI-Control[_-](\d+\.\d+\.\d+)/);
+        if (m) { latestVersion = m[1]; break; }
+      }
+
       return reply.send({
         currentVersion: APP_VERSION,
+        latestVersion: latestVersion ?? null,
         latestTag: release.tag_name,
         latestName: release.name,
         body: release.body,
