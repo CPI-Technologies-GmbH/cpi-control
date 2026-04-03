@@ -104,7 +104,7 @@ export async function generateAgentConfig(
       type: 'http',
       checkIntervalSeconds: w.checkIntervalSeconds || 60,
       timeoutMs: 10000,
-      expectedStatusCodes: w.expectedStatusCode ? [w.expectedStatusCode] : [200, 301, 302, 404],
+      expectedStatusCodes: [200, 301, 302, 404], // Accept common HTTP responses as "up"
     });
   }
 

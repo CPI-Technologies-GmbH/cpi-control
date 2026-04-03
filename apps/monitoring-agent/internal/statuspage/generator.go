@@ -46,6 +46,7 @@ type ServiceData struct {
 	ResponseTimeMs *int    // nil if not shown
 	LastChecked    string
 	DayHistory     []DayStatus
+	HistoryLabel   string // "48 hours", "7 days", "14 days", "90 days"
 }
 
 // DayStatus represents the status of a service for a single day.
@@ -233,7 +234,8 @@ func buildServiceData(cfg ServiceConfig, checks []checkEntry, now time.Time) Ser
 		sd.UptimePercent = 100
 		sd.Uptime7d = 100
 		sd.Uptime24h = 100
-		sd.DayHistory = buildEmptyHistory(now, 90)
+		sd.DayHistory = buildEmptyHistory(now, 48)
+		sd.HistoryLabel = "48 hours"
 		return sd
 	}
 
@@ -257,8 +259,32 @@ func buildServiceData(cfg ServiceConfig, checks []checkEntry, now time.Time) Ser
 		sd.ResponseTimeMs = &ms
 	}
 
-	// Build 90-day history
-	sd.DayHistory = buildDayHistory(checks, now, 90)
+	// Build adaptive history: choose interval based on how long we have data
+	// < 2 days: hourly bars (up to 48)
+	// < 7 days: 6h bars
+	// < 14 days: 12h bars
+	// >= 14 days: daily bars (up to 90)
+	oldestCheck := now
+	for _, c := range checks {
+		if !c.checkedAt.IsZero() && c.checkedAt.Before(oldestCheck) {
+			oldestCheck = c.checkedAt
+		}
+	}
+	dataAge := now.Sub(oldestCheck)
+
+	if dataAge < 2*24*time.Hour {
+		sd.DayHistory = buildIntervalHistory(checks, now, time.Hour, 48)
+		sd.HistoryLabel = "48 hours"
+	} else if dataAge < 7*24*time.Hour {
+		sd.DayHistory = buildIntervalHistory(checks, now, 6*time.Hour, 28)
+		sd.HistoryLabel = "7 days"
+	} else if dataAge < 14*24*time.Hour {
+		sd.DayHistory = buildIntervalHistory(checks, now, 12*time.Hour, 28)
+		sd.HistoryLabel = "14 days"
+	} else {
+		sd.DayHistory = buildDayHistory(checks, now, 90)
+		sd.HistoryLabel = "90 days"
+	}
 
 	return sd
 }
@@ -318,6 +344,32 @@ func buildEmptyHistory(now time.Time, days int) []DayStatus {
 	for i := 0; i < days; i++ {
 		d := now.AddDate(0, 0, -(days-1-i))
 		history[i] = DayStatus{Date: d.Format("2006-01-02"), Status: "unknown"}
+	}
+	return history
+}
+
+func buildIntervalHistory(checks []checkEntry, now time.Time, interval time.Duration, bars int) []DayStatus {
+	history := make([]DayStatus, bars)
+	for i := 0; i < bars; i++ {
+		slotEnd := now.Add(-time.Duration(bars-1-i) * interval)
+		slotStart := slotEnd.Add(-interval)
+		dateStr := slotEnd.Format("2006-01-02 15:04")
+
+		worst := "unknown"
+		hasChecks := false
+		for _, c := range checks {
+			if c.checkedAt.After(slotStart) && !c.checkedAt.After(slotEnd) {
+				hasChecks = true
+				mapped := mapStatus(c.status)
+				if worst == "unknown" || statusWorse(mapped, worst) {
+					worst = mapped
+				}
+			}
+		}
+		if !hasChecks {
+			worst = "unknown"
+		}
+		history[i] = DayStatus{Date: dateStr, Status: worst}
 	}
 	return history
 }
