@@ -11,6 +11,7 @@ import {
   deploymentSources,
   infrastructureBindings,
   monitoringTargets,
+  remoteAgents,
   repositoryBindings,
   websites,
 } from '../../db/schema.js';
@@ -281,6 +282,35 @@ export class SyncScheduler {
     }
 
     this.ensureMonitoringTargets();
+    this.syncAllAgentConfigs();
+  }
+
+  /** Auto-sync config to all online agents after service discovery */
+  private syncAllAgentConfigs(): void {
+    try {
+      const agents = this.db.select().from(remoteAgents).all();
+      const onlineAgents = agents.filter((a: any) => a.status === 'online');
+      if (onlineAgents.length === 0) return;
+
+      const { syncAgentConfig } = require('./../../modules/agent-lifecycle/syncer.js');
+      const serverUrl = process.env.OPSBOARD_SERVER_URL || 'http://127.0.0.1:19876';
+
+      for (const agent of onlineAgents) {
+        syncAgentConfig(this.db, agent.id, serverUrl)
+          .then((result: any) => {
+            if (result.success) {
+              log.info({ agentId: agent.id, agentName: agent.name }, 'Auto-synced agent config');
+            } else {
+              log.warn({ agentId: agent.id, error: result.message }, 'Agent config sync failed');
+            }
+          })
+          .catch((err: any) => {
+            log.debug({ agentId: agent.id, error: err.message }, 'Agent config auto-sync skipped');
+          });
+      }
+    } catch (err: any) {
+      log.debug({ error: err.message }, 'Agent auto-sync not available');
+    }
   }
 
   /** Sync multiple K8s clusters and merge results into one */

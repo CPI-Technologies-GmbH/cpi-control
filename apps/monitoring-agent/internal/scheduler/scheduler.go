@@ -132,7 +132,7 @@ func (s *Scheduler) startCron(cfg *config.Config) error {
 			return fmt.Errorf("failed to schedule check for target %s: %w", t.ID, err)
 		}
 		log.Printf("[scheduler] Scheduled target %s (%s) every %ds",
-			t.ID, t.Endpoint, t.CheckIntervalSeconds)
+			t.ID, t.GetEndpoint(), t.CheckIntervalSeconds)
 	}
 
 	s.cron.Start()
@@ -225,14 +225,14 @@ func (s *Scheduler) sendSlackNotification(evt incident.Event, target config.Targ
 	case "down":
 		msg = notify.BuildDownMessage(
 			target.WebsiteName,
-			target.Endpoint,
+			target.GetEndpoint(),
 			evt.Message,
 			evt.Timestamp,
 		)
 	case "recovery":
 		msg = notify.BuildRecoveryMessage(
 			target.WebsiteName,
-			target.Endpoint,
+			target.GetEndpoint(),
 			evt.Timestamp, // approximate; real downSince would need state tracking
 			evt.Timestamp,
 		)

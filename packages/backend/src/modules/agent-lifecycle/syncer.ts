@@ -21,6 +21,8 @@ export interface AgentConfig {
     id: string;
     websiteId: string;
     websiteName: string;
+    name: string;
+    url: string;
     endpoint: string;
     type: string;
     checkIntervalSeconds: number;
@@ -29,7 +31,7 @@ export interface AgentConfig {
     expectedContentPattern?: string;
   }>;
   checkDefaults: {
-    timeoutMs: number;
+    timeoutSeconds: number;
     failureThreshold: number;
     recoveryThreshold: number;
     cooldownMinutes: number;
@@ -49,7 +51,7 @@ export async function generateAgentConfig(
 
   if (!agent) return null;
 
-  // Get all services and their monitoring targets
+  // Get all services (with URLs) + monitoring targets
   const allServices = db.select().from(websites).all();
   const allTargets = db.select().from(monitoringTargets).all();
 
@@ -61,24 +63,49 @@ export async function generateAgentConfig(
     targetsByService.set(t.websiteId, arr);
   }
 
-  // Flatten targets into the format expected by the Go agent
+  // Flatten targets: use monitoring_targets if available, otherwise create from service URL
   const targets: AgentConfig['targets'] = [];
+  const addedServiceIds = new Set<string>();
+
+  // 1. Add explicit monitoring targets
   for (const w of allServices) {
+    if (w.archived) continue;
     const serviceTargets = targetsByService.get(w.id);
-    if (!serviceTargets) continue;
-    for (const t of serviceTargets) {
-      targets.push({
-        id: t.id,
-        websiteId: w.id,
-        websiteName: w.name,
-        endpoint: t.target,
-        type: t.type,
-        checkIntervalSeconds: t.checkIntervalSeconds || 60,
-        timeoutMs: t.timeoutMs || 10000,
-        expectedStatusCodes: t.expectedStatusCode ? [t.expectedStatusCode] : [200],
-        expectedContentPattern: t.expectedBodyContains || undefined,
-      });
+    if (serviceTargets && serviceTargets.length > 0) {
+      for (const t of serviceTargets) {
+        targets.push({
+          id: t.id,
+          websiteId: w.id,
+          websiteName: w.name,
+          endpoint: t.target,
+        url: t.target,
+        name: w.name,
+          type: t.type,
+          checkIntervalSeconds: t.checkIntervalSeconds || 60,
+          timeoutMs: t.timeoutMs || 10000,
+          expectedStatusCodes: t.expectedStatusCode ? [t.expectedStatusCode] : [200],
+          expectedContentPattern: t.expectedBodyContains || undefined,
+        });
+        addedServiceIds.add(w.id);
+      }
     }
+  }
+
+  // 2. Auto-generate targets for services with URLs that don't have monitoring targets
+  for (const w of allServices) {
+    if (w.archived || addedServiceIds.has(w.id) || !w.url) continue;
+    targets.push({
+      id: `auto-${w.id}`,
+      websiteId: w.id,
+      websiteName: w.name,
+      endpoint: w.url,
+      url: w.url,
+      name: w.name,
+      type: 'http',
+      checkIntervalSeconds: w.checkIntervalSeconds || 60,
+      timeoutMs: 10000,
+      expectedStatusCodes: w.expectedStatusCode ? [w.expectedStatusCode] : [200, 301, 302, 404],
+    });
   }
 
   // Generate a bearer token for this agent (in production, use proper token generation)
@@ -91,7 +118,7 @@ export async function generateAgentConfig(
     apiPort: 9111,
     targets,
     checkDefaults: {
-      timeoutMs: 10000,
+      timeoutSeconds: 10,
       failureThreshold: 3,
       recoveryThreshold: 2,
       cooldownMinutes: 15,

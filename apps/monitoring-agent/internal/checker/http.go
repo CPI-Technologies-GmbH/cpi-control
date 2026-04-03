@@ -72,7 +72,7 @@ func CheckHTTP(ctx context.Context, target config.Target) CheckResult {
 		},
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.Endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.GetEndpoint(), nil)
 	if err != nil {
 		result.Status = StatusDown
 		result.ErrorMessage = fmt.Sprintf("failed to create request: %v", err)
@@ -88,7 +88,7 @@ func CheckHTTP(ctx context.Context, target config.Target) CheckResult {
 	if err != nil {
 		result.Status = StatusDown
 		result.ErrorMessage = fmt.Sprintf("request failed: %v", err)
-		log.Printf("[checker] %s (%s) DOWN: %v (%dms)", target.ID, target.Endpoint, err, result.ResponseTimeMs)
+		log.Printf("[checker] %s (%s) DOWN: %v (%dms)", target.ID, target.GetEndpoint(), err, result.ResponseTimeMs)
 		return result
 	}
 	defer resp.Body.Close()
@@ -96,7 +96,7 @@ func CheckHTTP(ctx context.Context, target config.Target) CheckResult {
 	result.HTTPStatusCode = resp.StatusCode
 
 	// Check TLS if endpoint is HTTPS
-	parsedURL, _ := url.Parse(target.Endpoint)
+	parsedURL, _ := url.Parse(target.GetEndpoint())
 	if parsedURL != nil && parsedURL.Scheme == "https" && resp.TLS != nil {
 		tlsResult := CheckTLS(resp.TLS)
 		result.TLSValid = &tlsResult.Valid
@@ -140,7 +140,7 @@ func CheckHTTP(ctx context.Context, target config.Target) CheckResult {
 	}
 
 	log.Printf("[checker] %s (%s) %s: status=%d, time=%dms",
-		target.ID, target.Endpoint, result.Status, result.HTTPStatusCode, result.ResponseTimeMs)
+		target.ID, target.GetEndpoint(), result.Status, result.HTTPStatusCode, result.ResponseTimeMs)
 
 	return result
 }

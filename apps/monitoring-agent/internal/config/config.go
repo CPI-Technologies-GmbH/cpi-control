@@ -26,9 +26,21 @@ type Config struct {
 // CheckDefaults contains default values for health checks.
 type CheckDefaults struct {
 	TimeoutMs         int `json:"timeoutMs"`
+	TimeoutSeconds    int `json:"timeoutSeconds"` // alias, converted to ms
 	FailureThreshold  int `json:"failureThreshold"`
 	RecoveryThreshold int `json:"recoveryThreshold"`
 	CooldownMinutes   int `json:"cooldownMinutes"`
+}
+
+// GetTimeoutMs returns effective timeout in milliseconds.
+func (c *CheckDefaults) GetTimeoutMs() int {
+	if c.TimeoutMs > 0 {
+		return c.TimeoutMs
+	}
+	if c.TimeoutSeconds > 0 {
+		return c.TimeoutSeconds * 1000
+	}
+	return 10000 // default 10s
 }
 
 // Target represents a single monitoring target.
@@ -37,11 +49,21 @@ type Target struct {
 	WebsiteID              string `json:"websiteId"`
 	WebsiteName            string `json:"websiteName"`
 	Endpoint               string `json:"endpoint"`
+	URL                    string `json:"url"` // alias for endpoint
+	Name                   string `json:"name"`
 	Type                   string `json:"type"`
 	CheckIntervalSeconds   int    `json:"checkIntervalSeconds"`
 	ExpectedStatusCodes    []int  `json:"expectedStatusCodes"`
 	ExpectedContentPattern string `json:"expectedContentPattern"`
 	TimeoutMs              int    `json:"timeoutMs"`
+}
+
+// GetEndpoint returns the effective URL to check (prefers endpoint, falls back to url).
+func (t *Target) GetEndpoint() string {
+	if t.Endpoint != "" {
+		return t.Endpoint
+	}
+	return t.URL
 }
 
 // Manager handles thread-safe access to the configuration.
