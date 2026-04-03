@@ -3,6 +3,7 @@ import CIStatusBadge from './CIStatusBadge';
 import { statusBgColor, formatRelativeTime, formatMs, truncate, providerColor, providerLabel } from '@/lib/formatters';
 import { ProviderIcon } from '@/components/icons/ProviderIcons';
 import { ExternalLink, GitBranch } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import clsx from 'clsx';
 
 interface Props {
@@ -20,7 +21,17 @@ export default function DeploymentRow({ deployment, onClick }: Props) {
     >
       {/* Service */}
       <td className="px-4 py-3">
-        <p className="text-sm font-medium text-gray-200">{dep.serviceName || '—'}</p>
+        {dep.serviceId ? (
+          <Link
+            to={`/services/${dep.serviceId}`}
+            className="text-sm font-medium text-gray-200 hover:text-blue-400 transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {dep.serviceName || '—'}
+          </Link>
+        ) : (
+          <p className="text-sm font-medium text-gray-200">{dep.serviceName || '—'}</p>
+        )}
         <p className="text-xs text-gray-500">{dep.projectName || ''}</p>
       </td>
 

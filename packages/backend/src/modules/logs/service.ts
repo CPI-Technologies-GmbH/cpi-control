@@ -361,6 +361,29 @@ export class LogService {
     let lastCollectorIndex = this._logCollector ? this._logCollector.buffer.currentIndex : 0;
     const useCollectorForK8s = sources.includes('kubernetes') && this._logCollector !== null;
 
+    // Yield initial batch of recent entries so the client gets immediate data
+    const INITIAL_BATCH_SIZE = 100;
+
+    if (useCollectorForK8s && this._logCollector) {
+      const recentK8s = this._logCollector.buffer.getLast(INITIAL_BATCH_SIZE);
+      for (const entry of recentK8s) {
+        if (matchesFilter(entry, filter)) {
+          yield entry;
+        }
+      }
+    }
+
+    if (sources.includes('backend')) {
+      const startIdx = Math.max(0, this.logBuffer.length - INITIAL_BATCH_SIZE);
+      for (let i = startIdx; i < this.logBuffer.length; i++) {
+        const entry = this.logBuffer[i];
+        if (matchesFilter(entry, filter)) {
+          yield entry;
+        }
+      }
+      lastBackendIndex = this.logBuffer.length;
+    }
+
     // Stern streaming (only new entries via --tail 0) — fallback when no collector
     let sternStream: AsyncGenerator<LogEntry> | null = null;
     if (sources.includes('kubernetes') && !this._logCollector) {

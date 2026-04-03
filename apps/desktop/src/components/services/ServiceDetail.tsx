@@ -1411,7 +1411,7 @@ export default function ServiceDetail() {
                               <div className="min-w-0">
                                 <p className="text-sm font-mono text-gray-200 truncate">{pod.name}</p>
                                 <p className="text-xs text-gray-500">
-                                  Node: {pod.nodeName || 'N/A'} | Restarts: {pod.restartCount}
+                                  Node: {pod.nodeName || 'N/A'} | Restarts: {pod.restartCount} | Age: {formatRelativeTime(pod.createdAt)}
                                 </p>
                               </div>
                             </div>

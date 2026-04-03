@@ -92,6 +92,7 @@ export class LogCollector {
   private namespaceProcesses: Map<string, NamespaceProcess> = new Map();
   private _buffer: RingBuffer<LogEntry>;
   private running = false;
+  private healthCheckTimer?: NodeJS.Timeout;
   private kubeconfigPath: string | null = null;
   /** Per-cluster kubeconfig temp file paths */
   private clusterKubeconfigPaths: Map<string, string> = new Map();
@@ -204,6 +205,9 @@ export class LogCollector {
       }
 
       log.info({ processCount: this.namespaceProcesses.size }, 'LogCollector started %d stern processes', this.namespaceProcesses.size);
+
+      // Start periodic health check every 60s
+      this.healthCheckTimer = setInterval(() => this.healthCheck(), 60_000);
     } catch (err: any) {
       log.error({ error: err.message, stack: err.stack }, 'LogCollector start() failed');
     }
@@ -212,6 +216,11 @@ export class LogCollector {
   stop(): void {
     if (!this.running) return;
     this.running = false;
+
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = undefined;
+    }
 
     log.info('Stopping LogCollector — killing %d stern processes', this.namespaceProcesses.size);
 
@@ -377,15 +386,18 @@ export class LogCollector {
       }
     });
 
-    proc.on('close', (code) => {
-      log.warn({ namespace: displayNs, code }, 'stern process exited');
+    proc.on('close', (code, signal) => {
+      log.warn({ namespace: displayNs, code, signal }, 'stern process died (code=%s, signal=%s)', code, signal);
       this.namespaceProcesses.delete(namespaceKey);
 
       // Auto-restart if still running
       if (this.running) {
-        log.info({ namespace: displayNs, delayMs: RESTART_DELAY_MS }, 'Scheduling stern restart');
+        log.info({ namespace: displayNs, delayMs: RESTART_DELAY_MS }, 'Scheduling stern restart for namespace %s', displayNs);
         const timer = setTimeout(() => {
-          this.spawnSternForNamespace(namespaceKey, kcPath);
+          if (this.running) {
+            log.info({ namespace: displayNs }, 'Restarting stern process for namespace %s', displayNs);
+            this.spawnSternForNamespace(namespaceKey, kcPath);
+          }
         }, RESTART_DELAY_MS);
         this.namespaceProcesses.set(namespaceKey, {
           ...state,
@@ -398,6 +410,31 @@ export class LogCollector {
     proc.on('error', (err) => {
       log.error({ namespace: displayNs, error: err.message }, 'stern process error');
     });
+  }
+
+  /** Periodic health check: verify all namespace stern processes are alive. */
+  private healthCheck(): void {
+    if (!this.running) return;
+
+    let alive = 0;
+    let dead = 0;
+
+    for (const [nsKey, state] of this.namespaceProcesses) {
+      const isAlive = state.process && !state.process.killed && state.process.exitCode === null;
+      const hasPendingRestart = state.restartTimer !== undefined;
+
+      if (isAlive) {
+        alive++;
+      } else if (!hasPendingRestart) {
+        dead++;
+        const displayNs = nsKey.includes('::') ? nsKey.split('::')[1] : nsKey;
+        log.warn({ namespace: displayNs }, 'Health check: stern process for %s is dead with no restart scheduled — restarting', displayNs);
+        this.namespaceProcesses.delete(nsKey);
+        this.spawnSternForNamespace(nsKey, state.tmpKubeconfigPath);
+      }
+    }
+
+    log.debug({ alive, dead, total: this.namespaceProcesses.size }, 'Stern health check: %d alive, %d dead (restarted)', alive, dead);
   }
 
   /** Strip ANSI escape codes from a string. */
