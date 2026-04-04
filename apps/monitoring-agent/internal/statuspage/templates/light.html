@@ -67,7 +67,7 @@
 <div class="container">
   <header>
     <div class="logo-row">
-      {{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{.CompanyName}}">{{end}}
+      {{if .LogoURL}}<img src="{{.LogoURL | safeURL}}" alt="{{.CompanyName}}">{{end}}
       <h1>{{.CompanyName}}</h1>
     </div>
     <div class="subtitle">System Status</div>

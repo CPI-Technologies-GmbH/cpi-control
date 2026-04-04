@@ -104,6 +104,9 @@ func GeneratePage(page *PageConfig, storage *agentsync.Storage) ([]byte, error) 
 
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
+		"safeURL": func(s string) template.URL {
+			return template.URL(s)
+		},
 		"statusColor": func(status string) string {
 			switch status {
 			case "operational":
