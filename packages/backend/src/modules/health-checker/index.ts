@@ -1,6 +1,6 @@
 import { eq, and, lt } from 'drizzle-orm';
 import type { DB } from '../../db/client.js';
-import { websites, monitoringTargets, healthCheckResults } from '../../db/schema.js';
+import { websites, monitoringTargets, healthCheckResults, remoteAgents } from '../../db/schema.js';
 import { createChildLogger } from '../../shared/logger.js';
 import { eventBus, type ServiceEventType } from '../../shared/event-bus.js';
 import { ulid } from 'ulid';
@@ -143,7 +143,28 @@ export class HealthChecker {
         .all();
 
       // Filter: skip private services and archived services
-      const targets = rows.filter((row) => row.website.type !== 'service' && !row.website.archived);
+      let targets = rows.filter((row) => row.website.type !== 'service' && !row.website.archived);
+
+      // Skip services that are covered by an online agent — agent results take priority
+      const onlineAgents = this.db.select().from(remoteAgents)
+        .where(eq(remoteAgents.status, 'online')).all();
+      if (onlineAgents.length > 0) {
+        const agentCoveredIds = new Set<string>();
+        for (const agent of onlineAgents) {
+          const cfg = (agent.config || {}) as Record<string, unknown>;
+          const agentTargets = (cfg as any).targets as Array<{ websiteId: string }> | undefined;
+          if (agentTargets) {
+            for (const t of agentTargets) agentCoveredIds.add(t.websiteId);
+          }
+        }
+        if (agentCoveredIds.size > 0) {
+          const before = targets.length;
+          targets = targets.filter((row) => !agentCoveredIds.has(row.target.websiteId));
+          if (before !== targets.length) {
+            log.info({ skipped: before - targets.length, agentCovered: agentCoveredIds.size }, 'Skipping services covered by online agents');
+          }
+        }
+      }
 
       if (targets.length === 0) {
         log.debug('No monitoring targets to check');

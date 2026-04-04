@@ -542,7 +542,7 @@ dependencies = [
 
 [[package]]
 name = "cpi-control"
-version = "0.1.0"
+version = "0.1.30"
 dependencies = [
  "machine-uid",
  "serde",

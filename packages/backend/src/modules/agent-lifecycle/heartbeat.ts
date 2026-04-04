@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm';
 import type { DB } from '../../db/client.js';
-import { remoteAgents } from '../../db/schema.js';
+import { remoteAgents, healthCheckResults, websites } from '../../db/schema.js';
 import { createChildLogger } from '../../shared/logger.js';
-import { execOnAgent } from './ssh-helper.js';
+import { connectToAgent } from './ssh-helper.js';
+import { ulid } from 'ulid';
 
 const log = createChildLogger('agent-poller');
 
@@ -11,6 +12,20 @@ interface AgentHealthResponse {
   version: string;
   uptime: number;
   targetsCount: number;
+}
+
+interface AgentEvent {
+  id: string;
+  type: string;
+  data: {
+    targetId: string;
+    websiteId: string;
+    status: string;
+    statusCode?: number;
+    responseTimeMs?: number;
+    errorMessage?: string;
+    checkedAt: string;
+  };
 }
 
 export class HeartbeatMonitor {
@@ -62,39 +77,108 @@ export class HeartbeatMonitor {
     const now = new Date().toISOString();
     const agentConfig = (agent.config || {}) as Record<string, unknown>;
     const apiPort = (agentConfig.apiPort as number) || 9111;
+    const apiToken = (agentConfig.apiToken as string) || '';
 
-    // All agent communication goes via SSH
+    let ssh;
     try {
-      const result = await execOnAgent(agent, `curl -s --max-time 5 http://localhost:${apiPort}/health 2>/dev/null`);
-      const stdout = result.stdout.trim();
-      if (stdout) {
-        const data: AgentHealthResponse = JSON.parse(stdout);
+      ssh = await connectToAgent(agent);
+    } catch (err: any) {
+      log.warn({ agentId: agent.id, error: err.message }, 'SSH connection failed');
+      if (agent.status === 'online') {
         this.db.update(remoteAgents)
-          .set({
-            status: 'online',
-            version: data.version || undefined,
-            lastHeartbeatAt: now,
-            updatedAt: now,
-          })
+          .set({ status: 'offline', updatedAt: now })
           .where(eq(remoteAgents.id, agent.id))
           .run();
-        log.debug({ agentId: agent.id, version: data.version }, 'Agent polled via SSH');
-        return { success: true, data };
       }
-    } catch (err: any) {
-      log.warn({ agentId: agent.id, error: err.message }, 'SSH poll failed');
+      return { success: false };
     }
 
-    // SSH failed — mark offline
-    if (agent.status === 'online') {
+    try {
+      // 1. Get agent health status
+      const healthResult = await ssh.execCommand(`curl -s --max-time 5 http://localhost:${apiPort}/health 2>/dev/null`);
+      const healthJson = healthResult.stdout.trim();
+      if (!healthJson) {
+        throw new Error('Empty health response');
+      }
+
+      const data: AgentHealthResponse = JSON.parse(healthJson);
       this.db.update(remoteAgents)
-        .set({ status: 'offline', updatedAt: now })
+        .set({
+          status: 'online',
+          version: data.version || undefined,
+          lastHeartbeatAt: now,
+          updatedAt: now,
+        })
         .where(eq(remoteAgents.id, agent.id))
         .run();
-      log.warn({ agentId: agent.id }, 'Agent unreachable via SSH, marked offline');
-    }
+      log.debug({ agentId: agent.id, version: data.version, targets: data.targetsCount }, 'Agent polled');
 
-    return { success: false };
+      // 2. Pull pending health check events from agent
+      const authHeader = apiToken ? `-H "Authorization: Bearer ${apiToken}"` : '';
+      const eventsResult = await ssh.execCommand(
+        `curl -s --max-time 10 ${authHeader} http://localhost:${apiPort}/events/pending 2>/dev/null`
+      );
+      const eventsJson = eventsResult.stdout.trim();
+      if (eventsJson) {
+        try {
+          const parsed = JSON.parse(eventsJson);
+          const events: AgentEvent[] = parsed.events || parsed || [];
+          if (events.length > 0) {
+            this.processAgentEvents(agent.id, events, now);
+            // ACK the events
+            const eventIds = events.map((e) => e.id);
+            await ssh.execCommand(
+              `curl -s --max-time 5 -X POST ${authHeader} -H "Content-Type: application/json" -d '${JSON.stringify({ eventIds })}' http://localhost:${apiPort}/events/ack 2>/dev/null`
+            );
+            log.info({ agentId: agent.id, count: events.length }, 'Processed agent health events');
+          }
+        } catch (err: any) {
+          log.debug({ agentId: agent.id, error: err.message }, 'Failed to parse agent events');
+        }
+      }
+
+      return { success: true, data };
+    } catch (err: any) {
+      log.warn({ agentId: agent.id, error: err.message }, 'Agent poll failed');
+      if (agent.status === 'online') {
+        this.db.update(remoteAgents)
+          .set({ status: 'offline', updatedAt: now })
+          .where(eq(remoteAgents.id, agent.id))
+          .run();
+      }
+      return { success: false };
+    } finally {
+      ssh.dispose();
+    }
+  }
+
+  private processAgentEvents(agentId: string, events: AgentEvent[], now: string): void {
+    for (const event of events) {
+      const d = event.data;
+      if (!d?.websiteId) continue;
+
+      // Map agent status to backend status
+      const status = d.status === 'up' ? 'healthy' : d.status === 'degraded' ? 'degraded' : d.status === 'down' ? 'down' : d.status;
+
+      // Store health check result
+      this.db.insert(healthCheckResults).values({
+        id: ulid(),
+        websiteId: d.websiteId,
+        monitoringTargetId: d.targetId || null,
+        status,
+        statusCode: d.statusCode ?? null,
+        responseTimeMs: d.responseTimeMs ?? 0,
+        errorMessage: d.errorMessage ?? null,
+        checkedAt: d.checkedAt || now,
+        createdAt: now,
+      }).run();
+
+      // Update website status from agent result
+      this.db.update(websites)
+        .set({ status, updatedAt: now })
+        .where(eq(websites.id, d.websiteId))
+        .run();
+    }
   }
 
   // Backward compat
