@@ -203,7 +203,8 @@ export default async function settingsRoutes(app: FastifyInstance) {
       });
     } catch (err: any) {
       log.error({ error: err.message }, 'App update check failed');
-      return reply.status(500).send({ error: err.message });
+      const msg = err.message?.includes('fetch') ? 'Keine Internetverbindung oder GitHub nicht erreichbar' : err.message;
+      return reply.status(502).send({ error: msg });
     }
   });
 
@@ -218,16 +219,28 @@ export default async function settingsRoutes(app: FastifyInstance) {
       };
       if (token) headers.Authorization = `Bearer ${token}`;
 
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
       const res = await fetch(
         `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/agent-latest`,
-        { headers }
+        { headers, signal: controller.signal }
       );
+      clearTimeout(timer);
+
       if (!res.ok) {
         return reply.status(502).send({ error: `GitHub API error: ${res.status}` });
       }
       const release = (await res.json()) as GitHubRelease;
 
+      // Extract version from asset filename
+      let latestVersion: string | undefined;
+      for (const a of release.assets) {
+        const m = a.name.match(/agent[_-]?(\d+\.\d+\.\d+)/);
+        if (m) { latestVersion = m[1]; break; }
+      }
+
       return reply.send({
+        latestVersion: latestVersion ?? null,
         latestTag: release.tag_name,
         latestName: release.name,
         body: release.body,
@@ -242,7 +255,10 @@ export default async function settingsRoutes(app: FastifyInstance) {
       });
     } catch (err: any) {
       log.error({ error: err.message }, 'Agent update check failed');
-      return reply.status(500).send({ error: err.message });
+      const msg = err.message?.includes('fetch') || err.name === 'AbortError'
+        ? 'Keine Internetverbindung oder GitHub nicht erreichbar'
+        : err.message;
+      return reply.status(502).send({ error: msg });
     }
   });
 }

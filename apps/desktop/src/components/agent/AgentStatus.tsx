@@ -201,8 +201,8 @@ export default function AgentStatus() {
               disabled={pollMutation.isPending}
               className="btn-ghost text-xs flex items-center gap-1.5 py-1"
             >
-              <Wifi size={12} className={pollMutation.isPending ? 'animate-pulse' : ''} />
-              Poll
+              <RefreshCw size={12} className={pollMutation.isPending ? 'animate-spin' : ''} />
+              Status prüfen
             </button>
             <button
               onClick={() => restartMutation.mutate(agent.id)}
