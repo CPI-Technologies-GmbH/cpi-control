@@ -203,7 +203,9 @@ export default async function settingsRoutes(app: FastifyInstance) {
       });
     } catch (err: any) {
       log.error({ error: err.message }, 'App update check failed');
-      const msg = err.message?.includes('fetch') ? 'Keine Internetverbindung oder GitHub nicht erreichbar' : err.message;
+      const msg = err.message?.includes('fetch') || err.name === 'AbortError'
+        ? 'GitHub API not reachable. Check your internet connection.'
+        : err.message;
       return reply.status(502).send({ error: msg });
     }
   });
@@ -256,7 +258,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
     } catch (err: any) {
       log.error({ error: err.message }, 'Agent update check failed');
       const msg = err.message?.includes('fetch') || err.name === 'AbortError'
-        ? 'Keine Internetverbindung oder GitHub nicht erreichbar'
+        ? 'GitHub API not reachable. Check your internet connection.'
         : err.message;
       return reply.status(502).send({ error: msg });
     }
