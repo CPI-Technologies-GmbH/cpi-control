@@ -3,11 +3,14 @@ package statuspage
 import (
 	"bytes"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"math"
+	"os"
+	"strings"
 	"time"
 
 	"opsboard-agent/internal/crypto"
@@ -213,9 +216,29 @@ func buildPageData(page *PageConfig, storage *agentsync.Storage) (*PageData, err
 		primaryColor = "#3b82f6"
 	}
 
+	// Resolve logo: if it's a local file path, read and convert to data URI
+	logoURL := page.Branding.LogoURL
+	if logoURL != "" && !strings.HasPrefix(logoURL, "data:") && !strings.HasPrefix(logoURL, "http") {
+		if data, err := os.ReadFile(logoURL); err == nil {
+			mimeType := "image/png"
+			switch {
+			case strings.HasSuffix(logoURL, ".svg"):
+				mimeType = "image/svg+xml"
+			case strings.HasSuffix(logoURL, ".jpg"), strings.HasSuffix(logoURL, ".jpeg"):
+				mimeType = "image/jpeg"
+			case strings.HasSuffix(logoURL, ".webp"):
+				mimeType = "image/webp"
+			}
+			logoURL = fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(data))
+		} else {
+			slog.Warn("failed to read logo file", "path", logoURL, "error", err)
+			logoURL = ""
+		}
+	}
+
 	return &PageData{
 		CompanyName:  page.Branding.CompanyName,
-		LogoURL:      page.Branding.LogoURL,
+		LogoURL:      logoURL,
 		PrimaryColor: primaryColor,
 		Theme:        page.Theme,
 		Projects:     projects,

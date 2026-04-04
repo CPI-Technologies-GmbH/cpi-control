@@ -222,15 +222,38 @@ export default async function statusPageRoutes(app: FastifyInstance) {
         .where(eq(statusPages.agentId, page.agentId!))
         .all();
 
+      const activePages = allPages.filter((p: any) => p.isActive);
+
+      // Upload logo files separately (base64 data URIs are too large for heredoc)
+      await ssh.execCommand('sudo mkdir -p /etc/opsboard-agent/logos');
+      for (const p of activePages as any[]) {
+        if (p.brandingLogo && p.brandingLogo.startsWith('data:')) {
+          const match = p.brandingLogo.match(/^data:image\/(\w+);base64,(.+)$/);
+          if (match) {
+            const ext = match[1] === 'svg+xml' ? 'svg' : match[1];
+            const logoPath = `/etc/opsboard-agent/logos/${p.id}.${ext}`;
+            // Write base64 data via pipe to avoid heredoc issues
+            await ssh.execCommand(`echo '${match[2]}' | base64 -d | sudo tee ${logoPath} > /dev/null`);
+          }
+        }
+      }
+
       const statusPageConfig = {
-        pages: allPages.filter((p: any) => p.isActive).map((p: any) => {
+        pages: activePages.map((p: any) => {
           const cfg = (p.config || {}) as Record<string, unknown>;
+          // Determine logo path: use local file if data URI was uploaded
+          let logoUrl = p.brandingLogo || '';
+          if (logoUrl.startsWith('data:')) {
+            const match = logoUrl.match(/^data:image\/(\w+);base64,/);
+            const ext = match ? (match[1] === 'svg+xml' ? 'svg' : match[1]) : 'png';
+            logoUrl = `/etc/opsboard-agent/logos/${p.id}.${ext}`;
+          }
           return {
             id: p.id,
             domain: p.domain,
             theme: p.theme,
             branding: {
-              logo_url: p.brandingLogo || '',
+              logo_url: logoUrl,
               primary_color: p.brandingColor || '#3b82f6',
               company_name: p.brandingCompany || '',
             },
