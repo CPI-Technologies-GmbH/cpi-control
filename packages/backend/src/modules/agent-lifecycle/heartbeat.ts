@@ -124,7 +124,7 @@ export class HeartbeatMonitor {
           const parsed = JSON.parse(eventsJson);
           const events: AgentEvent[] = parsed.events || parsed || [];
           if (events.length > 0) {
-            this.processAgentEvents(agent.id, events, now);
+            this.processAgentEvents(agent, events, now);
             // ACK the events
             const eventIds = events.map((e) => e.id);
             await ssh.execCommand(
@@ -152,7 +152,9 @@ export class HeartbeatMonitor {
     }
   }
 
-  private processAgentEvents(agentId: string, events: AgentEvent[], now: string): void {
+  private processAgentEvents(agent: any, events: AgentEvent[], now: string): void {
+    const agentLocation = [agent.locationCity, agent.locationCountry].filter(Boolean).join(', ');
+
     for (const event of events) {
       const d = event.data;
       if (!d?.websiteId) continue;
@@ -160,7 +162,7 @@ export class HeartbeatMonitor {
       // Map agent status to backend status
       const status = d.status === 'up' ? 'healthy' : d.status === 'degraded' ? 'degraded' : d.status === 'down' ? 'down' : d.status;
 
-      // Store health check result
+      // Store health check result with agent source metadata
       this.db.insert(healthCheckResults).values({
         id: ulid(),
         websiteId: d.websiteId,
@@ -169,6 +171,12 @@ export class HeartbeatMonitor {
         statusCode: d.statusCode ?? null,
         responseTimeMs: d.responseTimeMs ?? 0,
         errorMessage: d.errorMessage ?? null,
+        metadata: {
+          source: 'agent',
+          agentId: agent.id,
+          agentName: agent.name || agent.host,
+          agentLocation: agentLocation || undefined,
+        },
         checkedAt: d.checkedAt || now,
         createdAt: now,
       }).run();

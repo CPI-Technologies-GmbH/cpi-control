@@ -89,6 +89,16 @@ export default function HealthTimeline({ serviceId }: Props) {
                     {check.responseTimeMs}ms
                   </span>
                 )}
+                {(check as any).metadata?.source === 'agent' && (
+                  <span className="text-[10px] text-blue-400/70 bg-blue-500/10 px-1.5 py-0.5 rounded font-mono">
+                    {(check as any).metadata.agentLocation || (check as any).metadata.agentName || 'Agent'}
+                  </span>
+                )}
+                {(check as any).metadata?.source === 'local' && (
+                  <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded font-mono">
+                    Local
+                  </span>
+                )}
               </div>
               {check.errorMessage && (
                 <p className="text-xs text-red-400/80 mt-0.5 truncate">{check.errorMessage}</p>

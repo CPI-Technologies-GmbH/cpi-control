@@ -210,6 +210,7 @@ export class HealthChecker {
         statusCode: result.statusCode,
         responseTimeMs: result.responseTimeMs,
         errorMessage: result.errorMessage,
+        metadata: { source: 'local' },
         checkedAt: now,
         createdAt: now,
       }).run();

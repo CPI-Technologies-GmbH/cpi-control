@@ -301,6 +301,16 @@ if (isMainModule) {
 
   buildApp()
     .then((app) => {
+      // Graceful shutdown — kill stern processes on exit
+      const shutdown = async (signal: string) => {
+        log.info({ signal }, 'Received shutdown signal');
+        await app.close();
+        process.exit(0);
+      };
+      process.on('SIGTERM', () => shutdown('SIGTERM'));
+      process.on('SIGINT', () => shutdown('SIGINT'));
+      process.on('SIGHUP', () => shutdown('SIGHUP'));
+
       app.listen({ port, host }, (err, address) => {
         if (err) {
           log.error({ error: err.message }, 'Failed to start server');
