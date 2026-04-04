@@ -13,6 +13,13 @@ import { parseISO, format, subDays } from 'date-fns';
 
 const BASE_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) || 'http://localhost:19876';
 
+interface StatusBucketRaw {
+  time: string;
+  healthy: number;
+  degraded: number;
+  down: number;
+}
+
 interface StatusBucket {
   time: string;
   healthy: number;
@@ -40,7 +47,18 @@ export default function ProjectStatusTimeline({ projectId }: Props) {
         `${BASE_URL}/api/inventory/projects/${projectId}/status-timeline?${sp.toString()}`
       );
       if (!res.ok) throw new Error('Failed to fetch status timeline');
-      return res.json();
+      const raw: StatusBucketRaw[] = await res.json();
+      // Convert absolute counts to percentages
+      return raw.map((b) => {
+        const total = b.healthy + b.degraded + b.down;
+        if (total === 0) return { time: b.time, healthy: 100, degraded: 0, down: 0 };
+        return {
+          time: b.time,
+          healthy: Math.round((b.healthy / total) * 100),
+          degraded: Math.round((b.degraded / total) * 100),
+          down: Math.round((b.down / total) * 100),
+        };
+      });
     },
     enabled: !!projectId,
     refetchInterval: 60_000,
@@ -75,9 +93,12 @@ export default function ProjectStatusTimeline({ projectId }: Props) {
             tickLine={false}
           />
           <YAxis
+            domain={[0, 100]}
+            tickFormatter={(v: number) => `${v}%`}
             tick={{ fill: '#6b7280', fontSize: 11 }}
             axisLine={{ stroke: '#374151' }}
             tickLine={false}
+            width={40}
           />
           <Tooltip
             contentStyle={{

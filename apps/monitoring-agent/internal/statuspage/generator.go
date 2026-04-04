@@ -298,7 +298,7 @@ func calcUptime(checks []checkEntry, now time.Time, window time.Duration) float6
 			continue
 		}
 		total++
-		if c.status == "up" || c.status == "degraded" {
+		if c.status == "up" || c.status == "healthy" || c.status == "degraded" {
 			up++
 		}
 	}
@@ -376,7 +376,7 @@ func buildIntervalHistory(checks []checkEntry, now time.Time, interval time.Dura
 
 func mapStatus(s string) string {
 	switch s {
-	case "up":
+	case "up", "healthy":
 		return "operational"
 	case "degraded":
 		return "degraded"
