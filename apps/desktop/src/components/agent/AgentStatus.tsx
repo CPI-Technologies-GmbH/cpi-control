@@ -3,6 +3,8 @@ import { statusDotColor, statusBgColor, formatRelativeTime, formatDate } from '@
 import { Server, RefreshCw, Trash2, Activity, Wifi, Clock, Hash, MapPin, Key, Copy, Check } from 'lucide-react';
 import clsx from 'clsx';
 import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { updates } from '@/lib/api';
 
 // Map of ISO country codes to flag emojis
 function countryFlag(code: string | null | undefined): string {
@@ -13,12 +15,44 @@ function countryFlag(code: string | null | undefined): string {
   );
 }
 
+function compareVersions(current: string, latest: string): 'latest' | 'minor' | 'major' {
+  const [cMaj, cMin, cPatch] = current.split('.').map(Number);
+  const [lMaj, lMin, lPatch] = latest.split('.').map(Number);
+  if (cMaj === lMaj && cMin === lMin && cPatch >= lPatch) return 'latest';
+  if (cMaj < lMaj) return 'major';
+  return 'minor';
+}
+
 export default function AgentStatus() {
   const { data: agents, isLoading, error } = useAgentList();
   const restartMutation = useRestartAgent();
   const uninstallMutation = useUninstallAgent();
   const [confirmUninstallId, setConfirmUninstallId] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+
+  const { data: latestAgent } = useQuery({
+    queryKey: ['updates', 'agent'],
+    queryFn: () => updates.checkAgent(),
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+
+  const latestAgentVersion = latestAgent?.assets
+    ?.find((a: any) => a.name.includes('linux-amd64'))
+    ?.name.match(/agent[_-]?(\d+\.\d+\.\d+)/)?.[1]
+    ?? latestAgent?.latestVersion;
+
+  const qc = useQueryClient();
+  const pollMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`http://localhost:19876/api/agents/${id}/poll`, { method: 'POST' });
+      if (!res.ok) throw new Error('Poll failed');
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agents'] });
+    },
+  });
 
   function copyPublicKey(agentId: string, key: string) {
     navigator.clipboard.writeText(key);
@@ -83,7 +117,15 @@ export default function AgentStatus() {
               <Activity size={12} className="text-gray-500" />
               <div>
                 <p className="text-gray-500">Version</p>
-                <p className="text-gray-300 font-mono">{agent.version || '—'}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-gray-300 font-mono">{agent.version || '—'}</p>
+                  {agent.version && latestAgentVersion && (() => {
+                    const status = compareVersions(agent.version, latestAgentVersion);
+                    if (status === 'latest') return <span className="w-2 h-2 rounded-full bg-emerald-500" title="Up to date" />;
+                    if (status === 'minor') return <span className="w-2 h-2 rounded-full bg-amber-500" title={`Update available: ${latestAgentVersion}`} />;
+                    return <span className="w-2 h-2 rounded-full bg-red-500" title={`Major update: ${latestAgentVersion}`} />;
+                  })()}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-1.5">
@@ -154,6 +196,14 @@ export default function AgentStatus() {
           )}
 
           <div className="flex items-center gap-2 pt-2 border-t border-gray-700/50">
+            <button
+              onClick={() => pollMutation.mutate(agent.id)}
+              disabled={pollMutation.isPending}
+              className="btn-ghost text-xs flex items-center gap-1.5 py-1"
+            >
+              <Wifi size={12} className={pollMutation.isPending ? 'animate-pulse' : ''} />
+              Poll
+            </button>
             <button
               onClick={() => restartMutation.mutate(agent.id)}
               disabled={restartMutation.isPending}

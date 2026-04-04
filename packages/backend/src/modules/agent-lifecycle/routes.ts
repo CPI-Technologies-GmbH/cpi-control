@@ -325,6 +325,25 @@ export default async function agentLifecycleRoutes(app: FastifyInstance) {
     return reply.send(updated);
   });
 
+  // POST /agents/:id/poll — Trigger immediate agent poll
+  app.post<{ Params: { id: string } }>('/agents/:id/poll', async (request, reply) => {
+    const agent = db.select().from(remoteAgents).where(eq(remoteAgents.id, request.params.id)).all()[0];
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+
+    const monitor = app.heartbeatMonitor;
+    if (!monitor) return reply.status(500).send({ error: 'HeartbeatMonitor not available' });
+
+    const result = await monitor.pollSingleAgent(agent);
+
+    // Re-read agent after poll to get updated data
+    const updated = db.select().from(remoteAgents).where(eq(remoteAgents.id, request.params.id)).all()[0];
+    return reply.send({
+      success: result.success,
+      agent: updated,
+      health: result.data || null,
+    });
+  });
+
   // Delete agent record (useful for cleaning up failed installs)
   app.delete<{ Params: { id: string } }>(
     '/agents/:id',

@@ -1,15 +1,8 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { updates } from '@/lib/api';
 import type { UpdateInfo } from '@/lib/api';
-import { Download, RefreshCw, Package, Server, ExternalLink, CheckCircle } from 'lucide-react';
+import { Download, RefreshCw, Package, Server, CheckCircle } from 'lucide-react';
 import clsx from 'clsx';
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString('de-DE', {
@@ -38,8 +31,6 @@ function ReleaseCard({
   onRefresh: () => void;
   currentVersion?: string;
 }) {
-  const [expandAssets, setExpandAssets] = useState(false);
-
   return (
     <div className="card p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -108,49 +99,7 @@ function ReleaseCard({
               Veröffentlicht: {formatDate(data.publishedAt)}
             </div>
 
-            {data.body && (
-              <div className="text-sm text-gray-400 whitespace-pre-wrap border-t border-gray-700/50 pt-3">
-                {data.body}
-              </div>
-            )}
           </div>
-
-          {data.assets.length > 0 && (
-            <div>
-              <button
-                onClick={() => setExpandAssets(!expandAssets)}
-                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-              >
-                {expandAssets ? 'Assets ausblenden' : `${data.assets.length} Assets anzeigen`}
-              </button>
-
-              {expandAssets && (
-                <div className="mt-2 space-y-1">
-                  {data.assets.map((asset) => (
-                    <a
-                      key={asset.name}
-                      href={asset.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-between px-3 py-2 rounded bg-gray-800/50 hover:bg-gray-800 transition-colors group"
-                    >
-                      <div className="flex items-center gap-2 text-sm text-gray-300">
-                        <Download size={12} className="text-gray-500" />
-                        <span className="font-mono text-xs">{asset.name}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500">{formatBytes(asset.size)}</span>
-                        <ExternalLink
-                          size={12}
-                          className="text-gray-600 group-hover:text-gray-400 transition-colors"
-                        />
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </>
       )}
     </div>

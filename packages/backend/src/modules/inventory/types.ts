@@ -4,6 +4,7 @@ export interface CreateProjectBody {
   icon?: string;
   contactEmail?: string;
   contactPhone?: string;
+  slackWebhookUrl?: string;
   notes?: string;
   metadata?: Record<string, unknown>;
 }
@@ -14,6 +15,7 @@ export interface UpdateProjectBody {
   icon?: string;
   contactEmail?: string;
   contactPhone?: string;
+  slackWebhookUrl?: string | null;
   notes?: string;
   metadata?: Record<string, unknown>;
 }

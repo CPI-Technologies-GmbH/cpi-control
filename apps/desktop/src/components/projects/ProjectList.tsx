@@ -160,6 +160,25 @@ export default function ProjectList() {
                       Added {formatRelativeTime(project.createdAt)}
                     </span>
                   </div>
+                  {project.healthSummary && project.serviceCount !== undefined && project.serviceCount > 0 && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-0.5">
+                        {Array.from({ length: project.healthSummary.healthy }).map((_, i) => (
+                          <span key={`h${i}`} className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        ))}
+                        {Array.from({ length: project.healthSummary.degraded }).map((_, i) => (
+                          <span key={`d${i}`} className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        ))}
+                        {Array.from({ length: project.healthSummary.down }).map((_, i) => (
+                          <span key={`x${i}`} className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                        ))}
+                        {Array.from({ length: project.healthSummary.unknown }).map((_, i) => (
+                          <span key={`u${i}`} className="w-1.5 h-1.5 rounded-full bg-gray-600" />
+                        ))}
+                      </div>
+                      <span className="text-xs text-gray-500">{project.serviceCount} services</span>
+                    </div>
+                  )}
                 </div>
               </div>
               <ChevronRight size={16} className="text-gray-600 group-hover:text-gray-400 transition-colors" />

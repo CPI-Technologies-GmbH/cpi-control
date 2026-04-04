@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { DB } from '../../db/client.js';
-import { notificationRules, websites } from '../../db/schema.js';
+import { notificationRules, websites, projects } from '../../db/schema.js';
 import { createChildLogger } from '../../shared/logger.js';
 
 const log = createChildLogger('notifications');
@@ -227,6 +227,45 @@ export class NotificationService {
       } catch (err: any) {
         errors.push(`Error sending notification for rule ${rule.id}: ${err.message}`);
         log.error({ ruleId: rule.id, error: err.message }, 'Notification send failed');
+      }
+    }
+
+    // ─── Per-project Slack webhook ──────────────────────────────────────────
+    if (details.serviceId) {
+      try {
+        const svcRows = this.db
+          .select({ projectId: websites.projectId })
+          .from(websites)
+          .where(eq(websites.id, details.serviceId as string))
+          .all();
+        const projectId = svcRows[0]?.projectId;
+        if (projectId) {
+          const projRows = this.db
+            .select({ slackWebhookUrl: projects.slackWebhookUrl })
+            .from(projects)
+            .where(eq(projects.id, projectId))
+            .all();
+          const slackUrl = projRows[0]?.slackWebhookUrl;
+          if (slackUrl) {
+            const severity = (details.severity as string) || 'info';
+            const serviceName = (details.serviceName as string) || 'Unknown';
+            const isResolved = eventType.includes('resolved');
+            const emoji = isResolved ? '\u{1F7E2}' : severity === 'critical' ? '\u{1F534}' : severity === 'warning' ? '\u{1F7E1}' : '\u{1F7E2}';
+            const text = isResolved
+              ? `\u{1F7E2} *${serviceName}* has recovered`
+              : `${emoji} *${serviceName}* is ${severity === 'critical' ? 'down' : 'degraded'}`;
+
+            fetch(slackUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text }),
+            }).catch((err) => {
+              log.warn({ projectId, error: err.message }, 'Failed to send project Slack webhook');
+            });
+          }
+        }
+      } catch (err: any) {
+        log.warn({ error: err.message }, 'Failed to look up project Slack webhook');
       }
     }
 

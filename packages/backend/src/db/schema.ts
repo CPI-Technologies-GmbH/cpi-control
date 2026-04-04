@@ -8,6 +8,7 @@ export const projects = sqliteTable('customers', {
   icon: text('icon'), // emoji or short text icon
   contactEmail: text('contact_email'),
   contactPhone: text('contact_phone'),
+  slackWebhookUrl: text('slack_webhook_url'),
   notes: text('notes'),
   metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>(),
   createdAt: text('created_at').notNull(), // ISO 8601

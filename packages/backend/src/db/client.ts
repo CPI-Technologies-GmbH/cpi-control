@@ -387,6 +387,11 @@ export function runMigrations(db: DB): void {
     sqlite.exec(`ALTER TABLE websites ADD COLUMN public_description TEXT`);
   } catch (_err) { /* already exists */ }
 
+  // Migration: add slack_webhook_url to customers (projects)
+  try {
+    sqlite.exec(`ALTER TABLE customers ADD COLUMN slack_webhook_url TEXT`);
+  } catch (_err) { /* already exists */ }
+
   // Migration: create status_pages table
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS status_pages (

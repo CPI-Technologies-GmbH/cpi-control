@@ -31,10 +31,19 @@ export interface Project {
   icon?: string | null;
   contactEmail?: string | null;
   contactPhone?: string | null;
+  slackWebhookUrl?: string | null;
   notes?: string | null;
   metadata?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
+  // Enriched fields from API
+  serviceCount?: number;
+  healthSummary?: {
+    healthy: number;
+    degraded: number;
+    down: number;
+    unknown: number;
+  };
 }
 
 export interface Service {

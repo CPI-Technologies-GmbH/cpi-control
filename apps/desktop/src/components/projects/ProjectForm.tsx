@@ -24,6 +24,7 @@ export default function ProjectForm({ project, onSubmit, onCancel, isSubmitting 
   const [icon, setIcon] = useState(project?.icon ?? '');
   const [contactEmail, setContactEmail] = useState(project?.contactEmail ?? '');
   const [contactPhone, setContactPhone] = useState(project?.contactPhone ?? '');
+  const [slackWebhookUrl, setSlackWebhookUrl] = useState(project?.slackWebhookUrl ?? '');
   const [notes, setNotes] = useState(project?.notes ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -34,6 +35,7 @@ export default function ProjectForm({ project, onSubmit, onCancel, isSubmitting 
       setIcon(project.icon ?? '');
       setContactEmail(project.contactEmail ?? '');
       setContactPhone(project.contactPhone ?? '');
+      setSlackWebhookUrl(project.slackWebhookUrl ?? '');
       setNotes(project.notes ?? '');
     }
   }, [project]);
@@ -60,6 +62,9 @@ export default function ProjectForm({ project, onSubmit, onCancel, isSubmitting 
     if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
       errs.contactEmail = 'Invalid email address';
     }
+    if (slackWebhookUrl && !slackWebhookUrl.startsWith('https://hooks.slack.com/')) {
+      errs.slackWebhookUrl = 'Must be a valid Slack webhook URL (https://hooks.slack.com/...)';
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -73,6 +78,7 @@ export default function ProjectForm({ project, onSubmit, onCancel, isSubmitting 
       icon: icon.trim() || null,
       contactEmail: contactEmail.trim() || null,
       contactPhone: contactPhone.trim() || null,
+      slackWebhookUrl: slackWebhookUrl.trim() || null,
       notes: notes.trim() || null,
     });
   }
@@ -157,6 +163,21 @@ export default function ProjectForm({ project, onSubmit, onCancel, isSubmitting 
             className="input"
             placeholder="+1 555-1234"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Slack Webhook URL</label>
+          <input
+            type="url"
+            value={slackWebhookUrl}
+            onChange={(e) => setSlackWebhookUrl(e.target.value)}
+            className="input"
+            placeholder="https://hooks.slack.com/services/..."
+          />
+          <p className="text-xs text-gray-600 mt-1">Notifications for this project will be sent to this Slack channel.</p>
+          {errors.slackWebhookUrl && (
+            <p className="text-xs text-red-400 mt-1">{errors.slackWebhookUrl}</p>
+          )}
         </div>
 
         <div>

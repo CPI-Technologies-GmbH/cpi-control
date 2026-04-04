@@ -113,7 +113,7 @@ export async function generateAgentConfig(
 
   return {
     agentId,
-    serverUrl,
+    serverUrl: '',
     apiToken,
     apiPort: 9111,
     targets,
@@ -175,8 +175,16 @@ export async function syncAgentConfig(
 
     // Update agent record
     const now = new Date().toISOString();
+    const existingConfig = (agent.config as Record<string, unknown>) || {};
     db.update(remoteAgents)
-      .set({ updatedAt: now })
+      .set({
+        updatedAt: now,
+        config: {
+          ...existingConfig,
+          apiToken: config.apiToken,
+          apiPort: config.apiPort,
+        },
+      })
       .where(eq(remoteAgents.id, agentId))
       .run();
 

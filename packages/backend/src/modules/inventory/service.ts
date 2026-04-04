@@ -29,7 +29,33 @@ import type {
 // ─── Projects ─────────────────────────────────────────────────────────────────
 
 export async function listProjects(db: DB) {
-  return db.select().from(projects).all();
+  const allProjects = db.select().from(projects).all();
+
+  // Enrich with service count and health summary
+  const allServices = db
+    .select({ id: websites.id, projectId: websites.projectId, status: websites.status, archived: websites.archived })
+    .from(websites)
+    .all();
+
+  return allProjects.map((project) => {
+    const projectServices = allServices.filter(
+      (s) => s.projectId === project.id && !s.archived
+    );
+    const healthSummary = { healthy: 0, degraded: 0, down: 0, unknown: 0 };
+    for (const svc of projectServices) {
+      const status = svc.status as keyof typeof healthSummary;
+      if (status in healthSummary) {
+        healthSummary[status]++;
+      } else {
+        healthSummary.unknown++;
+      }
+    }
+    return {
+      ...project,
+      serviceCount: projectServices.length,
+      healthSummary,
+    };
+  });
 }
 
 export async function getProject(db: DB, id: string) {
@@ -48,6 +74,7 @@ export async function createProject(db: DB, body: CreateProjectBody) {
       icon: body.icon || null,
       contactEmail: body.contactEmail || null,
       contactPhone: body.contactPhone || null,
+      slackWebhookUrl: body.slackWebhookUrl || null,
       notes: body.notes || null,
       metadata: body.metadata || null,
       createdAt: now,
@@ -69,6 +96,7 @@ export async function updateProject(db: DB, id: string, body: UpdateProjectBody)
       ...(body.icon !== undefined && { icon: body.icon }),
       ...(body.contactEmail !== undefined && { contactEmail: body.contactEmail }),
       ...(body.contactPhone !== undefined && { contactPhone: body.contactPhone }),
+      ...(body.slackWebhookUrl !== undefined && { slackWebhookUrl: body.slackWebhookUrl }),
       ...(body.notes !== undefined && { notes: body.notes }),
       ...(body.metadata !== undefined && { metadata: body.metadata }),
       updatedAt: now,

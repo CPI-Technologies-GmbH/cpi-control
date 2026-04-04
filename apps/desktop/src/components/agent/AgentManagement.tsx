@@ -1,12 +1,9 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import AgentStatus from './AgentStatus';
 import AgentInstaller from './AgentInstaller';
-import AgentConfig from './AgentConfig';
 import { useAgentList } from '@/hooks/useAgentStatus';
 import { updates } from '@/lib/api';
-import { Server, RefreshCw, Download, CheckCircle, ArrowRight } from 'lucide-react';
-import clsx from 'clsx';
+import { Server, RefreshCw, CheckCircle, ArrowRight } from 'lucide-react';
 
 function AgentUpdateCheck() {
   const { data: agents } = useAgentList();
@@ -63,40 +60,10 @@ function AgentUpdateCheck() {
       )}
 
       {data && (
-        <div className="bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <CheckCircle size={14} className="text-green-400" />
-            <span className="text-sm font-medium text-gray-200">{data.latestName}</span>
-            {data.draft && (
-              <span className="badge bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs">
-                Draft
-              </span>
-            )}
-          </div>
-          <div className="text-xs text-gray-500">
-            {new Date(data.publishedAt).toLocaleString('de-DE')}
-          </div>
-          {data.body && (
-            <div className="text-xs text-gray-400 whitespace-pre-wrap border-t border-gray-700/50 pt-2">
-              {data.body}
-            </div>
-          )}
-          {data.assets.length > 0 && (
-            <div className="flex flex-wrap gap-1 pt-1">
-              {data.assets.map((a) => (
-                <a
-                  key={a.name}
-                  href={a.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded transition-colors"
-                >
-                  <Download size={10} />
-                  {a.name}
-                </a>
-              ))}
-            </div>
-          )}
+        <div className="flex items-center gap-2 text-xs">
+          <CheckCircle size={14} className="text-green-400" />
+          <span className="text-gray-300">Neueste Version: {data.latestName}</span>
+          <span className="text-gray-600">({new Date(data.publishedAt).toLocaleDateString('de-DE')})</span>
         </div>
       )}
     </div>
@@ -136,13 +103,6 @@ export default function AgentManagement() {
         <AgentInstaller />
       </section>
 
-      {/* Config */}
-      <section>
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">
-          Configuration
-        </h2>
-        <AgentConfig />
-      </section>
     </div>
   );
 }
