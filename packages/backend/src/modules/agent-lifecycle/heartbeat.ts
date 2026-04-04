@@ -9,7 +9,7 @@ const log = createChildLogger('agent-poller');
 interface AgentHealthResponse {
   status: string;
   version: string;
-  uptime: string;
+  uptime: number;
   targetsCount: number;
 }
 
@@ -30,7 +30,6 @@ export class HeartbeatMonitor {
   start(): void {
     this.interval = setInterval(() => this.pollAllAgents(), this.pollIntervalMs);
     log.info({ pollIntervalMs: this.pollIntervalMs }, 'Agent poller started');
-    // Poll immediately on start
     setTimeout(() => this.pollAllAgents(), 5000);
   }
 
@@ -64,66 +63,44 @@ export class HeartbeatMonitor {
     const agentConfig = (agent.config || {}) as Record<string, unknown>;
     const apiPort = (agentConfig.apiPort as number) || 9111;
 
-    // Strategy 1: Direct HTTP
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(`http://${agent.host}:${apiPort}/health`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-
-      if (res.ok) {
-        const data: AgentHealthResponse = await res.json();
-        this.updateAgentOnline(agent.id, data, now);
-        log.debug({ agentId: agent.id, version: data.version }, 'Agent polled via HTTP');
-        return { success: true, data };
-      }
-    } catch {
-      // HTTP failed, try SSH
-    }
-
-    // Strategy 2: SSH fallback
+    // All agent communication goes via SSH
     try {
       const result = await execOnAgent(agent, `curl -s --max-time 5 http://localhost:${apiPort}/health 2>/dev/null`);
-      if (result.stdout.trim()) {
-        const data: AgentHealthResponse = JSON.parse(result.stdout.trim());
-        this.updateAgentOnline(agent.id, data, now);
+      const stdout = result.stdout.trim();
+      if (stdout) {
+        const data: AgentHealthResponse = JSON.parse(stdout);
+        this.db.update(remoteAgents)
+          .set({
+            status: 'online',
+            version: data.version || undefined,
+            lastHeartbeatAt: now,
+            updatedAt: now,
+          })
+          .where(eq(remoteAgents.id, agent.id))
+          .run();
         log.debug({ agentId: agent.id, version: data.version }, 'Agent polled via SSH');
         return { success: true, data };
       }
     } catch (err: any) {
-      log.debug({ agentId: agent.id, error: err.message }, 'SSH poll failed');
+      log.warn({ agentId: agent.id, error: err.message }, 'SSH poll failed');
     }
 
-    // Both failed — mark offline
+    // SSH failed — mark offline
     if (agent.status === 'online') {
       this.db.update(remoteAgents)
         .set({ status: 'offline', updatedAt: now })
         .where(eq(remoteAgents.id, agent.id))
         .run();
-      log.warn({ agentId: agent.id }, 'Agent unreachable, marked offline');
+      log.warn({ agentId: agent.id }, 'Agent unreachable via SSH, marked offline');
     }
 
     return { success: false };
   }
 
-  private updateAgentOnline(agentId: string, data: AgentHealthResponse, now: string): void {
-    this.db.update(remoteAgents)
-      .set({
-        status: 'online',
-        version: data.version || undefined,
-        lastHeartbeatAt: now,
-        updatedAt: now,
-      })
-      .where(eq(remoteAgents.id, agentId))
-      .run();
-  }
-
-  // Keep backward compat — old code may call this
+  // Backward compat
   async processHeartbeat(
     agentId: string,
-    data: { version?: string; metrics?: Record<string, unknown> }
+    data: { version?: string }
   ): Promise<boolean> {
     const now = new Date().toISOString();
     const rows = this.db.select().from(remoteAgents).where(eq(remoteAgents.id, agentId)).all();
