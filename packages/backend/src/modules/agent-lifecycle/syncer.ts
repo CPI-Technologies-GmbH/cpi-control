@@ -183,6 +183,7 @@ export async function syncAgentConfig(
           ...existingConfig,
           apiToken: config.apiToken,
           apiPort: config.apiPort,
+          targets: config.targets.map((t) => ({ id: t.id, websiteId: t.websiteId })),
         },
       })
       .where(eq(remoteAgents.id, agentId))

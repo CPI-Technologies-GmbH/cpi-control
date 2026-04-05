@@ -464,9 +464,8 @@ export class SyncScheduler {
   private autoDiscoverServices(deployments: SyncedDeployment[], provider: string, result?: SyncResult): void {
     const now = new Date().toISOString();
 
-    // Get a default project (first available, or null)
-    const allProjects = this.db.select().from(projects).all();
-    const defaultProjectId = allProjects.length > 0 ? allProjects[0].id : null;
+    // New services start unassigned — user assigns them to projects manually
+    const defaultProjectId = null;
 
     // Group deployments by project, collecting all workflow names and URLs
     interface ProjectInfo {
