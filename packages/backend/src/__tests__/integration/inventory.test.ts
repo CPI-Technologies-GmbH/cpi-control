@@ -206,8 +206,8 @@ describe('Inventory API - Services', () => {
     });
     expect(prodRes.statusCode).toBe(200);
     const prodSites = prodRes.json();
-    expect(prodSites).toHaveLength(1);
-    expect(prodSites[0].name).toBe('Prod Site');
+    expect(prodSites.data).toHaveLength(1);
+    expect(prodSites.data[0].name).toBe('Prod Site');
 
     const stagingRes = await app.inject({
       method: 'GET',
@@ -215,8 +215,8 @@ describe('Inventory API - Services', () => {
     });
     expect(stagingRes.statusCode).toBe(200);
     const stagingSites = stagingRes.json();
-    expect(stagingSites).toHaveLength(1);
-    expect(stagingSites[0].name).toBe('Staging Site');
+    expect(stagingSites.data).toHaveLength(1);
+    expect(stagingSites.data[0].name).toBe('Staging Site');
   });
 
   it('should filter services by status', async () => {
@@ -241,8 +241,8 @@ describe('Inventory API - Services', () => {
     });
     expect(healthyRes.statusCode).toBe(200);
     const healthySites = healthyRes.json();
-    expect(healthySites).toHaveLength(1);
-    expect(healthySites[0].name).toBe('Site A');
+    expect(healthySites.data).toHaveLength(1);
+    expect(healthySites.data[0].name).toBe('Site A');
 
     const unknownRes = await app.inject({
       method: 'GET',
@@ -250,8 +250,8 @@ describe('Inventory API - Services', () => {
     });
     expect(unknownRes.statusCode).toBe(200);
     const unknownSites = unknownRes.json();
-    expect(unknownSites).toHaveLength(1);
-    expect(unknownSites[0].name).toBe('Site B');
+    expect(unknownSites.data).toHaveLength(1);
+    expect(unknownSites.data[0].name).toBe('Site B');
   });
 
   it('should search services by name', async () => {
@@ -267,8 +267,8 @@ describe('Inventory API - Services', () => {
     });
     expect(searchRes.statusCode).toBe(200);
     const results = searchRes.json();
-    expect(results).toHaveLength(1);
-    expect(results[0].name).toBe('Alpha Portal');
+    expect(results.data).toHaveLength(1);
+    expect(results.data[0].name).toBe('Alpha Portal');
   });
 
   it('should set projectId null when project is deleted', async () => {
