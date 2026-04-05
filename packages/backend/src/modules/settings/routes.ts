@@ -18,24 +18,8 @@ const log = createChildLogger('settings-routes');
 
 const GITHUB_REPO = 'CPI-Technologies-GmbH/cpi-control';
 
-// Read version from package.json (CI injects the real version via sync-version.mjs)
-import { readFileSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
-
-const APP_VERSION = (() => {
-  try {
-    const __dirname2 = dirname(fileURLToPath(import.meta.url));
-    // Walk up to find package.json (works from both src/ and dist/)
-    for (const rel of ['../../../package.json', '../../package.json', '../package.json', './package.json']) {
-      try {
-        const pkg = JSON.parse(readFileSync(resolve(__dirname2, rel), 'utf-8'));
-        if (pkg.name && pkg.version) return pkg.version;
-      } catch { /* try next */ }
-    }
-  } catch { /* fallback */ }
-  return '0.1.0';
-})();
+// Version injected at build time by tsup (from package.json)
+const APP_VERSION = process.env.APP_VERSION || '0.1.0';
 
 let secretStore: SecretStore;
 async function getSecretStore(): Promise<SecretStore> {

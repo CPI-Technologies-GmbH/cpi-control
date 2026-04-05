@@ -1,4 +1,7 @@
 import { defineConfig } from 'tsup';
+import { readFileSync } from 'fs';
+
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
 export default defineConfig({
   entry: ['src/index.ts'],
@@ -20,6 +23,9 @@ export default defineConfig({
     // (external list above still takes precedence for native modules)
     /.*/,
   ],
+  define: {
+    'process.env.APP_VERSION': JSON.stringify(pkg.version),
+  },
   banner: {
     // ESM compat: provide __dirname and __filename
     // Use aliased import to avoid colliding with source-level `dirname` imports

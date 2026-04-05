@@ -6,8 +6,8 @@ import clsx from 'clsx';
 
 // ─── Toast Configuration ─────────────────────────────────────────────────────
 
-const TOAST_DURATION = 8000;
-const MAX_VISIBLE_TOASTS = 5;
+const TOAST_DURATION = 5000;
+const MAX_VISIBLE_TOASTS = 3;
 
 interface EventConfig {
   icon: React.ReactNode;
