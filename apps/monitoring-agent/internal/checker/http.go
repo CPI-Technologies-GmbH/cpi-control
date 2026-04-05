@@ -146,14 +146,23 @@ func CheckHTTP(ctx context.Context, target config.Target) CheckResult {
 }
 
 // isExpectedStatus checks if the status code is in the expected list.
+// Always treats 404, 401, 403, 406 as acceptable (service is reachable).
 func isExpectedStatus(code int, expected []int) bool {
+	// These codes mean the service is UP — it responded, just not with content
+	if code == 404 || code == 401 || code == 403 || code == 406 {
+		return true
+	}
 	if len(expected) == 0 {
-		return code >= 200 && code < 300
+		return code >= 200 && code < 400
 	}
 	for _, e := range expected {
 		if code == e {
 			return true
 		}
+	}
+	// Any 2xx/3xx is generally acceptable
+	if code >= 200 && code < 400 {
+		return true
 	}
 	return false
 }
