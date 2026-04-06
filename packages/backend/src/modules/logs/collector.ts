@@ -15,7 +15,8 @@ const log = createChildLogger('log-collector');
 
 const STERN_PATH = '/opt/homebrew/bin/stern';
 const DEFAULT_BUFFER_SIZE = 10000;
-const RESTART_DELAY_MS = 5000;
+const RESTART_DELAYS_MS = [5_000, 10_000, 30_000, 60_000, 120_000];
+const MAX_RESTART_ATTEMPTS = 5;
 
 // ─── Ring Buffer ─────────────────────────────────────────────────────────────
 
@@ -81,6 +82,7 @@ interface NamespaceProcess {
   process: ChildProcess;
   tmpKubeconfigPath: string;
   restartTimer?: NodeJS.Timeout;
+  restartAttempts: number;
 }
 
 // ─── LogCollector ────────────────────────────────────────────────────────────
@@ -132,6 +134,14 @@ export class LogCollector {
     this.running = true;
 
     log.info('Starting LogCollector');
+
+    // Kill any orphaned stern processes from previous backend runs
+    try {
+      const { execSync } = await import('child_process');
+      execSync('pkill -9 -f "stern --namespace" 2>/dev/null || true', { stdio: 'ignore', shell: '/bin/bash' });
+      execSync('pkill -9 -f "stern --all-namespaces" 2>/dev/null || true', { stdio: 'ignore', shell: '/bin/bash' });
+      log.info('Cleaned up orphaned stern processes from previous runs');
+    } catch { /* ignore */ }
 
     // Check stern exists
     try {
@@ -224,13 +234,20 @@ export class LogCollector {
 
     log.info('Stopping LogCollector — killing %d stern processes', this.namespaceProcesses.size);
 
-    for (const [ns, state] of this.namespaceProcesses) {
+    for (const [, state] of this.namespaceProcesses) {
       if (state.restartTimer) clearTimeout(state.restartTimer);
       if (state.process && !state.process.killed) {
-        state.process.kill('SIGTERM');
+        try { state.process.kill('SIGKILL'); } catch { /* ignore */ }
       }
     }
     this.namespaceProcesses.clear();
+
+    // Belt and suspenders: pkill any orphaned sterns
+    try {
+      const { execSync } = require('child_process');
+      execSync('pkill -9 -f "stern --namespace" 2>/dev/null || true', { stdio: 'ignore', shell: '/bin/bash' });
+      execSync('pkill -9 -f "stern --all-namespaces" 2>/dev/null || true', { stdio: 'ignore', shell: '/bin/bash' });
+    } catch { /* ignore */ }
 
     // Clean up kubeconfig temp files
     for (const [, tmpPath] of this.clusterKubeconfigPaths) {
@@ -334,9 +351,19 @@ export class LogCollector {
     return out;
   }
 
-  private spawnSternForNamespace(namespaceKey: string, kubeconfigOverride?: string): void {
+  private spawnSternForNamespace(namespaceKey: string, kubeconfigOverride?: string, restartAttempts = 0): void {
     const kcPath = kubeconfigOverride || this.kubeconfigPath;
     if (!this.running || !kcPath) return;
+
+    // DEDUPLICATION: Kill any existing process for this namespace before spawning new one
+    const existing = this.namespaceProcesses.get(namespaceKey);
+    if (existing) {
+      if (existing.restartTimer) clearTimeout(existing.restartTimer);
+      if (existing.process && !existing.process.killed) {
+        try { existing.process.kill('SIGTERM'); } catch { /* ignore */ }
+      }
+      this.namespaceProcesses.delete(namespaceKey);
+    }
 
     const isAllNamespaces = namespaceKey.startsWith('__all__');
     // Extract actual namespace from key format "clusterName::namespace"
@@ -346,7 +373,7 @@ export class LogCollector {
       ? ['--all-namespaces', '--output', 'json', '--tail', '100', '.*']
       : ['--namespace', actualNamespace, '--output', 'json', '--tail', '100', '.*'];
 
-    log.info({ namespace: displayNs }, 'Spawning stern process');
+    log.info({ namespace: displayNs, attempt: restartAttempts }, 'Spawning stern process');
 
     const proc = spawn(STERN_PATH, args, {
       env: { ...process.env, KUBECONFIG: kcPath },
@@ -356,6 +383,7 @@ export class LogCollector {
       namespace: namespaceKey,
       process: proc,
       tmpKubeconfigPath: kcPath,
+      restartAttempts,
     };
 
     this.namespaceProcesses.set(namespaceKey, state);
@@ -387,24 +415,32 @@ export class LogCollector {
     });
 
     proc.on('close', (code, signal) => {
-      log.warn({ namespace: displayNs, code, signal }, 'stern process died (code=%s, signal=%s)', code, signal);
+      log.warn({ namespace: displayNs, code, signal, attempt: restartAttempts }, 'stern process died');
       this.namespaceProcesses.delete(namespaceKey);
 
-      // Auto-restart if still running
-      if (this.running) {
-        log.info({ namespace: displayNs, delayMs: RESTART_DELAY_MS }, 'Scheduling stern restart for namespace %s', displayNs);
-        const timer = setTimeout(() => {
-          if (this.running) {
-            log.info({ namespace: displayNs }, 'Restarting stern process for namespace %s', displayNs);
-            this.spawnSternForNamespace(namespaceKey, kcPath);
-          }
-        }, RESTART_DELAY_MS);
-        this.namespaceProcesses.set(namespaceKey, {
-          ...state,
-          process: proc,
-          restartTimer: timer,
-        });
+      // Auto-restart with exponential backoff if still running
+      if (!this.running) return;
+
+      const nextAttempt = restartAttempts + 1;
+      if (nextAttempt > MAX_RESTART_ATTEMPTS) {
+        log.error({ namespace: displayNs, attempts: restartAttempts }, 'Stern crashed too often, giving up');
+        return;
       }
+
+      const delay = RESTART_DELAYS_MS[Math.min(nextAttempt - 1, RESTART_DELAYS_MS.length - 1)];
+      log.info({ namespace: displayNs, delayMs: delay, attempt: nextAttempt }, 'Scheduling stern restart');
+
+      const timer = setTimeout(() => {
+        if (this.running) {
+          this.spawnSternForNamespace(namespaceKey, kcPath, nextAttempt);
+        }
+      }, delay);
+
+      this.namespaceProcesses.set(namespaceKey, {
+        ...state,
+        process: proc,
+        restartTimer: timer,
+      });
     });
 
     proc.on('error', (err) => {

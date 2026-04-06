@@ -304,12 +304,34 @@ if (isMainModule) {
       // Graceful shutdown — kill stern processes on exit
       const shutdown = async (signal: string) => {
         log.info({ signal }, 'Received shutdown signal');
-        await app.close();
+        try { await app.close(); } catch { /* ignore */ }
         process.exit(0);
       };
       process.on('SIGTERM', () => shutdown('SIGTERM'));
       process.on('SIGINT', () => shutdown('SIGINT'));
       process.on('SIGHUP', () => shutdown('SIGHUP'));
+
+      // Parent process watcher: if Tauri app dies, kill ourselves
+      // Capture original parent PID at startup; if it changes (re-parented to init=1) we're orphaned
+      const originalParentPid = process.ppid;
+      log.info({ originalParentPid }, 'Started, watching parent process');
+      if (originalParentPid && originalParentPid > 1) {
+        setInterval(() => {
+          // If we got re-parented (parent died, we're now child of init/launchd), shut down
+          if (process.ppid !== originalParentPid) {
+            log.warn({ originalParentPid, currentPpid: process.ppid }, 'Parent process changed (orphaned), shutting down');
+            shutdown('PARENT_GONE');
+            return;
+          }
+          // Also check if original parent still exists
+          try {
+            process.kill(originalParentPid, 0);
+          } catch {
+            log.warn({ originalParentPid }, 'Parent process disappeared, shutting down');
+            shutdown('PARENT_GONE');
+          }
+        }, 3000);
+      }
 
       app.listen({ port, host }, (err, address) => {
         if (err) {

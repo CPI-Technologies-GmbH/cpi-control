@@ -8,6 +8,42 @@ use tauri::Manager;
 
 const MAX_LOG_LINES: usize = 1000;
 
+/// Gracefully shut down a child process: SIGTERM, wait, then SIGKILL if needed.
+fn graceful_kill(child: &mut Child) {
+    let pid = child.id();
+
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::{kill, Signal};
+        use nix::unistd::Pid;
+        let _ = kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
+        // Give backend up to 3 seconds to shut down gracefully
+        for _ in 0..30 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if let Ok(Some(_)) = child.try_wait() {
+                return;
+            }
+        }
+    }
+
+    // Force kill if still running
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Kill all orphaned stern processes (cleanup safety net).
+fn cleanup_orphaned_sterns() {
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("pkill")
+            .args(["-9", "-f", "stern --namespace"])
+            .output();
+        let _ = std::process::Command::new("pkill")
+            .args(["-9", "-f", "stern --all-namespaces"])
+            .output();
+    }
+}
+
 struct BackendState {
     child: Option<Child>,
     started_at: Option<SystemTime>,
@@ -123,11 +159,11 @@ fn restart_backend(state: tauri::State<'_, SharedBackendState>) -> Result<String
         let mut guard = state.lock().map_err(|e| e.to_string())?;
         let bs = &mut *guard;
 
-        // Kill existing process
+        // Kill existing process gracefully
         if let Some(mut child) = bs.child.take() {
             let pid = child.id();
-            let _ = child.kill();
-            let _ = child.wait();
+            graceful_kill(&mut child);
+            cleanup_orphaned_sterns();
             bs.started_at = None;
             bs.logs.push_back(format!("[tauri] Killed backend process (PID: {})", pid));
             trim_logs(&mut bs.logs);
@@ -223,6 +259,9 @@ fn spawn_watchdog(state: SharedBackendState) {
             };
 
             if should_restart {
+                // Clean up any orphaned stern processes before spawning new backend
+                cleanup_orphaned_sterns();
+
                 let (node_path, backend_entry, app_data_dir, resource_dir) = {
                     let guard = match state.lock() {
                         Ok(g) => g,
@@ -438,10 +477,11 @@ pub fn run() {
                 let mut guard = state.lock().unwrap();
                 if let Some(mut child) = guard.child.take() {
                     println!("Shutting down backend (PID: {})...", child.id());
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    graceful_kill(&mut child);
                 }
                 drop(guard);
+                // Belt and suspenders: kill any orphaned stern processes
+                cleanup_orphaned_sterns();
             }
         })
         .invoke_handler(tauri::generate_handler![greet, get_backend_status, get_backend_logs, restart_backend, open_terminal, open_log_window, get_machine_id])
