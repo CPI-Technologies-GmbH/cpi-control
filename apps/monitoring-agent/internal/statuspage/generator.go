@@ -151,9 +151,12 @@ func templateFuncs() template.FuncMap {
 }
 
 func buildPageData(page *PageConfig, storage *agentsync.Storage) (*PageData, error) {
-	// Fetch last 90 days of results
-	sinceHeight := int64(0)
-	allResults, err := storage.GetResultsSince(sinceHeight, 100000)
+	now := time.Now().UTC()
+
+	// Fetch last 90 days of results using time-based filter to avoid
+	// row-limit truncation when many targets produce high result volumes.
+	sinceTime := now.AddDate(0, 0, -90).Format(time.RFC3339)
+	allResults, err := storage.GetResultsSinceTime(sinceTime)
 	if err != nil {
 		slog.Warn("failed to fetch results for status page", "error", err)
 		allResults = []*crypto.CheckResultBlock{}
@@ -190,7 +193,6 @@ func buildPageData(page *PageConfig, storage *agentsync.Storage) (*PageData, err
 		}
 	}
 
-	now := time.Now().UTC()
 	projects := make([]ProjectData, 0, len(page.Projects))
 
 	for _, projCfg := range page.Projects {

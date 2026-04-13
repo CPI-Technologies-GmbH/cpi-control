@@ -212,6 +212,36 @@ func (s *Storage) PruneOlderThan(days int) (int64, error) {
 	return deleted, nil
 }
 
+// GetResultsSinceTime retrieves all results with timestamp >= sinceTime (RFC3339).
+// Unlike GetResultsSince, this uses a time-based filter instead of a height-based one,
+// avoiding the risk of missing recent results due to a row limit.
+func (s *Storage) GetResultsSinceTime(sinceTime string) ([]*crypto.CheckResultBlock, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rows, err := s.db.Query(
+		`SELECT height, agent_id, timestamp, checks, hash, signature FROM results WHERE timestamp >= ? ORDER BY height ASC`,
+		sinceTime,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query results since time %s: %w", sinceTime, err)
+	}
+	defer rows.Close()
+
+	var results []*crypto.CheckResultBlock
+	for rows.Next() {
+		var block crypto.CheckResultBlock
+		var checksStr string
+		if err := rows.Scan(&block.Height, &block.AgentID, &block.Timestamp, &checksStr, &block.Hash, &block.Signature); err != nil {
+			return nil, fmt.Errorf("scan result row: %w", err)
+		}
+		block.Checks = json.RawMessage(checksStr)
+		results = append(results, &block)
+	}
+
+	return results, rows.Err()
+}
+
 // Close closes the underlying database connection.
 func (s *Storage) Close() error {
 	s.mu.Lock()
